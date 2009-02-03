@@ -31,8 +31,19 @@ extern "C" {
 
 #define WSREP_INTERFACE_VERSION "1:0:0"
 
+typedef uint64_t ws_id_t;
+typedef uint64_t trx_id_t;
+typedef uint64_t conn_id_t;
+typedef int64_t bf_seqno_t;
+
 /* Empty wsrep backend */
 extern const char* const WSREP_NONE;
+
+typedef enum wsrep_action {
+    WSREP_UPDATE,
+    WSREP_DELETE,
+    WSREP_INSERT,
+} wsrep_action_t;
 
 /* status codes */
 typedef enum wsrep_status {
@@ -58,17 +69,6 @@ typedef enum wsrep_conf_param_type {
     WSREP_TYPE_DOUBLE,  //!< float
     WSREP_TYPE_STRING,  //!< null terminated string
 } wsrep_conf_param_type_t;
-
-typedef enum wsrep_action {
-    WSREP_UPDATE,
-    WSREP_DELETE,
-    WSREP_INSERT,
-} wsrep_action_t;
-
-typedef uint64_t ws_id_t;
-typedef uint64_t trx_id_t;
-typedef uint64_t conn_id_t;
-typedef int64_t bf_seqno_t;
 
 /*!
  * @brief callback to return configuration parameter value
