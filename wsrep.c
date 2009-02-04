@@ -26,6 +26,16 @@
 
 const char* const WSREP_NONE = "none";
 
+// Logging stuff for the loader
+static const char* log_levels[] = {"FATAL", "ERROR", "WARN", "INFO", "DEBUG"};
+
+static void default_logger (wsrep_log_level_t lvl, const char* msg)
+{
+    fprintf (stderr, "wsrep loader: [%s] %s\n", log_levels[lvl], msg);
+}
+
+static wsrep_log_cb_t logger = default_logger;
+
 struct dummy_wsrep
 {
     wsrep_log_cb_t log_fn;
@@ -47,14 +57,9 @@ static void dummy_tear_down(wsrep_t *w)
     w->opaque = NULL;
 }
 
-static wsrep_status_t dummy_init(
-    wsrep_t *w, 
-    const char *gcs_group __attribute__((unused)), 
-    const char *gcs_address __attribute__((unused)), 
-    const char *data_dir __attribute__((unused)), 
-    wsrep_log_cb_t logger)
+static wsrep_status_t dummy_init(wsrep_t *w, const wsrep_init_args_t* args)
 {
-    DUMMY_PRIV(w)->log_fn = logger;
+    DUMMY_PRIV(w)->log_fn = args->logger_cb;
     DBUG_ENTER(w);
     return WSREP_OK;
 }
@@ -77,7 +82,8 @@ static wsrep_status_t dummy_recv(wsrep_t *w, void *ctx __attribute__((unused)))
     return WSREP_OK;
 }
 
-static void dummy_dbug_push(wsrep_t *w, const char *ctrl __attribute__((unused)))
+static void dummy_dbug_push(wsrep_t *w,
+                            const char *ctrl __attribute__((unused)))
 {
     DBUG_ENTER(w);
 }
@@ -87,51 +93,12 @@ static void dummy_dbug_pop(wsrep_t *w)
     DBUG_ENTER(w);
 }
 
-static wsrep_status_t dummy_set_logger(wsrep_t *w, wsrep_log_cb_t logger)
-{
-    DUMMY_PRIV(w)->log_fn = logger;
-    DBUG_ENTER(w);
-    return WSREP_OK;
-}
-
-static wsrep_status_t dummy_set_conf_param_cb(
-    wsrep_t *w, 
-    wsrep_conf_param_fun fun __attribute__((unused)))
-{
-    DBUG_ENTER(w);
-    return WSREP_OK;
-}
-
-static wsrep_status_t dummy_set_execute_handler(
-    wsrep_t *w, 
-    wsrep_bf_execute_fun fun __attribute__((unused)))
-{
-    DBUG_ENTER(w);
-    return WSREP_OK;
-}
-
-static wsrep_status_t dummy_set_execute_handler_rbr(
-    wsrep_t *w, 
-    wsrep_bf_execute_fun fun __attribute__((unused)))
-{
-    DBUG_ENTER(w);
-    return WSREP_OK;
-}
-
-static wsrep_status_t dummy_set_ws_start_handler(
-    wsrep_t *w, 
-    wsrep_ws_start_fun fun __attribute__((unused)))
-{
-    DBUG_ENTER(w);
-    return WSREP_OK;
-}
-
 static wsrep_status_t dummy_commit(
     wsrep_t *w, 
-    const trx_id_t trx_id __attribute__((unused)), 
-    const conn_id_t conn_id __attribute__((unused)), 
-    const char *query __attribute__((unused)), 
-    const size_t query_len __attribute__((unused)))
+    const trx_id_t   trx_id    __attribute__((unused)), 
+    const conn_id_t  conn_id   __attribute__((unused)), 
+    const char      *query     __attribute__((unused)), 
+    const size_t     query_len __attribute__((unused)))
 {
     DBUG_ENTER(w);
     return WSREP_OK;
@@ -139,8 +106,8 @@ static wsrep_status_t dummy_commit(
 
 static wsrep_status_t dummy_replay_trx(
     wsrep_t *w, 
-    const trx_id_t trx_id __attribute__((unused)), 
-    void *app_ctx __attribute__((unused)))
+    const trx_id_t  trx_id  __attribute__((unused)), 
+    void           *app_ctx __attribute__((unused)))
 {
     DBUG_ENTER(w);
     return WSREP_OK;
@@ -148,8 +115,8 @@ static wsrep_status_t dummy_replay_trx(
 
 static wsrep_status_t dummy_cancel_commit(
     wsrep_t *w, 
-    const bf_seqno_t bf_seqno __attribute__((unused)), 
-    const trx_id_t trx_id __attribute__((unused)))
+    const wsrep_seqno_t bf_seqno __attribute__((unused)), 
+    const trx_id_t      trx_id   __attribute__((unused)))
 {
     DBUG_ENTER(w);
     return WSREP_OK;
@@ -157,8 +124,8 @@ static wsrep_status_t dummy_cancel_commit(
 
 static wsrep_status_t dummy_cancel_slave(
     wsrep_t *w, 
-    const bf_seqno_t bf_seqno __attribute__((unused)), 
-    const bf_seqno_t victim_seqno __attribute__((unused)))
+    const wsrep_seqno_t bf_seqno     __attribute__((unused)), 
+    const wsrep_seqno_t victim_seqno __attribute__((unused)))
 {
     DBUG_ENTER(w);
     return WSREP_OK;
@@ -183,10 +150,10 @@ static wsrep_status_t dummy_rolledback(
 
 static wsrep_status_t dummy_append_query(
     wsrep_t *w, 
-    const trx_id_t trx_id __attribute__((unused)), 
-    const char *query __attribute__((unused)), 
-    const time_t timeval __attribute__((unused)),
-    const uint32_t randseed __attribute__((unused)))
+    const trx_id_t  trx_id   __attribute__((unused)), 
+    const char     *query    __attribute__((unused)), 
+    const time_t    timeval  __attribute__((unused)),
+    const uint32_t  randseed __attribute__((unused)))
 {
     DBUG_ENTER(w);
     return WSREP_OK;
@@ -194,12 +161,12 @@ static wsrep_status_t dummy_append_query(
 
 static wsrep_status_t dummy_append_row_key(
     wsrep_t *w, 
-    const trx_id_t trx_id __attribute__((unused)), 
-    const char *dbtable __attribute__((unused)),
-    const size_t dbtable_len __attribute__((unused)),
-    const char *key __attribute__((unused)), 
-    const size_t key_len __attribute__((unused)), 
-    const wsrep_action_t action __attribute__((unused)))
+    const trx_id_t       trx_id      __attribute__((unused)), 
+    const char          *dbtable     __attribute__((unused)),
+    const size_t         dbtable_len __attribute__((unused)),
+    const char          *key         __attribute__((unused)), 
+    const size_t         key_len     __attribute__((unused)), 
+    const wsrep_action_t action      __attribute__((unused)))
 {
     DBUG_ENTER(w);
     return WSREP_OK;
@@ -208,11 +175,11 @@ static wsrep_status_t dummy_append_row_key(
 
 static wsrep_status_t dummy_set_variable(
     wsrep_t *w, 
-    const conn_id_t conn_id __attribute__((unused)), 
-    const char *key __attribute__((unused)), 
-    const size_t key_len __attribute__((unused)),
-    const char *query __attribute__((unused)), 
-    const size_t query_len __attribute__((unused)))
+    const conn_id_t  conn_id   __attribute__((unused)), 
+    const char      *key       __attribute__((unused)), 
+    const size_t     key_len   __attribute__((unused)),
+    const char      *query     __attribute__((unused)), 
+    const size_t     query_len __attribute__((unused)))
 {
     DBUG_ENTER(w);
     return WSREP_OK;
@@ -220,9 +187,9 @@ static wsrep_status_t dummy_set_variable(
 
 static wsrep_status_t dummy_set_database(
     wsrep_t *w, 
-    const conn_id_t conn_id __attribute__((unused)), 
-    const char *query __attribute__((unused)), 
-    const size_t query_len __attribute__((unused)))
+    const conn_id_t  conn_id   __attribute__((unused)), 
+    const char      *query     __attribute__((unused)), 
+    const size_t     query_len __attribute__((unused)))
 {
     DBUG_ENTER(w);
     return WSREP_OK;
@@ -230,9 +197,9 @@ static wsrep_status_t dummy_set_database(
 
 static wsrep_status_t dummy_to_execute_start(
     wsrep_t *w, 
-    const conn_id_t conn_id __attribute__((unused)),
-    const char *query __attribute__((unused)), 
-    const size_t query_len __attribute__((unused)))
+    const conn_id_t  conn_id   __attribute__((unused)),
+    const char      *query     __attribute__((unused)), 
+    const size_t     query_len __attribute__((unused)))
 {
     DBUG_ENTER(w);
     return WSREP_OK;
@@ -240,7 +207,7 @@ static wsrep_status_t dummy_to_execute_start(
 
 static wsrep_status_t dummy_to_execute_end(
     wsrep_t *w,
-    const conn_id_t conn_id __attribute__((unused)))
+    const conn_id_t  conn_id   __attribute__((unused)))
 {
     DBUG_ENTER(w);
     return WSREP_OK;
@@ -251,14 +218,9 @@ static wsrep_t dummy_init_str = {
     &dummy_init,
     &dummy_enable,
     &dummy_disable,
-    &dummy_recv,
     &dummy_dbug_push,
     &dummy_dbug_pop,
-    &dummy_set_logger,
-    &dummy_set_conf_param_cb,
-    &dummy_set_execute_handler,
-    &dummy_set_execute_handler_rbr,
-    &dummy_set_ws_start_handler,
+    &dummy_recv,
     &dummy_commit,
     &dummy_replay_trx,
     &dummy_cancel_commit,
@@ -300,9 +262,13 @@ static int dummy_loader(wsrep_t *hptr)
 
 static int verify(const wsrep_t *wh, const char *iface_ver)
 {
-#define VERIFY(_p) if (!(_p)) {					\
-	fprintf(stderr, "wsrep_load(): verify(): %s\n", # _p);	\
-	return EINVAL;						\
+    const size_t msg_len = 128;
+    char msg[msg_len];
+
+#define VERIFY(_p) if (!(_p)) {                                       \
+	snprintf(msg, msg_len, "wsrep_load(): verify(): %s\n", # _p); \
+        logger (WSREP_LOG_ERROR, msg);                                \
+	return EINVAL;						      \
     }
 
     VERIFY(wh);
@@ -311,14 +277,9 @@ static int verify(const wsrep_t *wh, const char *iface_ver)
     VERIFY(wh->init);
     VERIFY(wh->enable);
     VERIFY(wh->disable);
-    VERIFY(wh->recv);
     VERIFY(wh->dbug_push);
     VERIFY(wh->dbug_pop);
-    VERIFY(wh->set_logger);
-    VERIFY(wh->set_conf_param_cb);
-    VERIFY(wh->set_execute_handler);
-    VERIFY(wh->set_execute_handler_rbr);
-    VERIFY(wh->set_ws_start_handler);
+    VERIFY(wh->recv);
     VERIFY(wh->commit);
     VERIFY(wh->replay_trx);
     VERIFY(wh->cancel_commit);
@@ -345,19 +306,26 @@ static wsrep_loader_fun wsrep_dlf(void *dlh, const char *sym)
     return alias.dlfun;
 }
 
-int wsrep_load(const char *spec, wsrep_t **hptr)
+int wsrep_load(const char *spec, wsrep_t **hptr, wsrep_log_cb_t log_cb)
 {
     int ret = 0;
     void *dlh = NULL;
     wsrep_loader_fun dlfun;
+    const size_t msg_len = 128;
+    char msg[msg_len];
+
+    if (NULL != log_cb)
+        logger = log_cb;
     
     if (!(spec && hptr))
         return EINVAL;
     
-    fprintf(stderr, "wsrep_load(): loading provider library '%s'\n", spec);
+    snprintf (msg, msg_len,
+              "wsrep_load(): loading provider library '%s'\n", spec);
+    logger (WSREP_LOG_INFO, msg);
     
     if (!(*hptr = malloc(sizeof(wsrep_t)))) {
-	fprintf(stderr, "wsrep_load(): out of memory");
+	logger (WSREP_LOG_FATAL, "wsrep_load(): out of memory");
         return ENOMEM;
     }
 
@@ -370,7 +338,8 @@ int wsrep_load(const char *spec, wsrep_t **hptr)
     }
     
     if (!(dlh = dlopen(spec, RTLD_NOW | RTLD_LOCAL))) {
-	fprintf(stderr, "wsrep_load(): dlopen(): %s\n", dlerror());
+	snprintf(msg, msg_len, "wsrep_load(): dlopen(): %s\n", dlerror());
+        logger (WSREP_LOG_ERROR, msg);
         ret = EINVAL;
 	goto out;
     }
@@ -381,13 +350,15 @@ int wsrep_load(const char *spec, wsrep_t **hptr)
     }
     
     if ((ret = (*dlfun)(*hptr)) != 0) {
-        fprintf(stderr, "wsrep_load(): loader failed: %s\n", strerror(ret));
+        snprintf(msg, msg_len, "wsrep_load(): loader failed: %s\n",
+                 strerror(ret));
+        logger (WSREP_LOG_ERROR, msg);
         goto out;
     }
     
     if ((ret = verify(*hptr, WSREP_INTERFACE_VERSION)) != 0 &&
         (*hptr)->tear_down) {
-	fprintf(stderr, "wsrep_load(): interface version mismatch\n");
+	logger (WSREP_LOG_ERROR, "wsrep_load(): interface version mismatch\n");
         (*hptr)->tear_down(*hptr);
         goto out;
     }
@@ -401,7 +372,7 @@ out:
         free(*hptr);
         *hptr = NULL;
     } else {
-        fprintf(stderr, "wsrep_load(): provider loaded succesfully\n");
+        logger (WSREP_LOG_INFO, "wsrep_load(): provider loaded succesfully\n");
     }
 
     return ret;
@@ -412,7 +383,7 @@ out:
 void wsrep_unload(wsrep_t *hptr)
 {
     if (!hptr) {
-        fprintf(stderr, "wsrep_unload(): null pointer\n");
+        logger (WSREP_LOG_WARN, "wsrep_unload(): null pointer\n");
     } else {
         if (hptr->dlh)
             dlclose(hptr->dlh);
