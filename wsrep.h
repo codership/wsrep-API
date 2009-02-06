@@ -31,12 +31,15 @@ extern "C" {
 
 #define WSREP_INTERFACE_VERSION "2:0:0"
 
+/* No wsrep backend spec */
+extern const char* const WSREP_NONE;
+
 typedef uint64_t trx_id_t;      //!< applicaiton transaction ID
 typedef uint64_t conn_id_t;     //!< application connection ID
 typedef int64_t  wsrep_seqno_t; //!< sequence number of a writeset, etc.
 
-/* No wsrep backend */
-extern const char* const WSREP_NONE;
+/*! Undefined seqno */
+static wsrep_seqno_t WSREP_SEQNO_UNDEFINED = -1;
 
 typedef enum wsrep_action {
     WSREP_UPDATE,
@@ -110,6 +113,9 @@ typedef void (*wsrep_log_cb_t)(wsrep_log_level_t, const char *);
 typedef struct wsrep_uuid {
     uint8_t uuid[16];
 } wsrep_uuid_t;
+
+/*! Undefined UUID */
+static wsrep_uuid_t WSREP_UUID_UNDEFINED = {{0,}};
 
 /*!
  * Maximum logical member name length
@@ -216,13 +222,20 @@ typedef int (*wsrep_bf_apply_row_cb_t)(void *ctx, void *data, size_t len);
  * Initialization parameters for wsrep, used as arguments for wsrep_init()
  */
 typedef struct wsrep_init_args {
+    /* Configuration options */
     const char* gcs_group;  //!< Symbolic group name
     const char* gcs_address;//!< URL-like gcs handle address (backend://address)
     const char* data_dir;   //!< directory where wsdb files are kept
     const char* name;       //!< Symbolic name of this process (e.g. hostname)
-    wsrep_conf_param_cb_t   conf_param_cb;
+
+    /* Application state information */
+    wsrep_uuid_t  state_uuid;  //! Application state group UUID
+    wsrep_seqno_t state_seqno; //! Applicaiton state sequence number
+
+    /* Application callbacks */
     wsrep_log_cb_t          logger_cb;
-    wsrep_view_cb_t         view_hander_cb;
+    wsrep_conf_param_cb_t   conf_param_cb;
+    wsrep_view_cb_t         view_handler_cb;
     wsrep_ws_start_cb_t     ws_start_cb;
     wsrep_bf_execute_cb_t   bf_execute_sql_cb;
     wsrep_bf_apply_row_cb_t bf_apply_row_cb;
@@ -288,10 +301,10 @@ struct wsrep_ {
  *
  */
     wsrep_status_t (*commit)(wsrep_t *,
-                             const trx_id_t    trx_id,
-                             const conn_id_t   conn_id, 
-                             const char*       rbr_data,
-                             const size_t      data_len);
+                             trx_id_t    trx_id,
+                             conn_id_t   conn_id, 
+                             const char* rbr_data,
+                             size_t      data_len);
     
 /*!
  * @brief wsrep_replay_trx
@@ -313,8 +326,8 @@ struct wsrep_ {
  *
  */
     wsrep_status_t (*replay_trx)(wsrep_t *,
-                                 const trx_id_t  trx_id,
-                                 void           *app_ctx);
+                                 trx_id_t  trx_id,
+                                 void     *app_ctx);
 
 /*!
  * @brief cancels a previously started commit
@@ -334,8 +347,8 @@ struct wsrep_ {
  *
  */
     wsrep_status_t (*cancel_commit)(wsrep_t *,
-                                    const wsrep_seqno_t bf_seqno,
-                                    const trx_id_t      victim_trx);
+                                    wsrep_seqno_t bf_seqno,
+                                    trx_id_t      victim_trx);
 
 /*!
  * @brief cancel another brute force transaction
@@ -351,8 +364,8 @@ struct wsrep_ {
  *
  */
     wsrep_status_t (*cancel_slave)(wsrep_t *,
-                                   const wsrep_seqno_t bf_seqno,
-                                   const wsrep_seqno_t victim_seqno);
+                                   wsrep_seqno_t bf_seqno,
+                                   wsrep_seqno_t victim_seqno);
     
 /*!
  * @brief marks the transaction as committed
@@ -364,9 +377,9 @@ struct wsrep_ {
  * @retval WSREP_OK         cluster commit succeeded
  * @retval WSREP_TRX_FAIL   must rollback transaction
  */
-    wsrep_status_t (*committed) (wsrep_t *, const trx_id_t trx_id);
+    wsrep_status_t (*committed) (wsrep_t *, trx_id_t trx_id);
 
-    wsrep_status_t (*rolledback)(wsrep_t *, const trx_id_t trx_id);    
+    wsrep_status_t (*rolledback)(wsrep_t *, trx_id_t trx_id);    
 
 /*!
  * @brief appends a query in transaction's write set
@@ -377,10 +390,10 @@ struct wsrep_ {
  * @param randseed
  */
     wsrep_status_t (*append_query)(wsrep_t *,
-                                   const trx_id_t  trx_id,
-                                   const char     *query, 
-                                   const time_t    timeval,
-                                   const uint32_t  randseed);
+                                   trx_id_t    trx_id,
+                                   const char *query, 
+                                   time_t      timeval,
+                                   uint32_t    randseed);
     
 /*!
  * @brief appends a row reference in transaction's write set
@@ -393,12 +406,12 @@ struct wsrep_ {
  * @param action      action code according to enum wsrep_action
  */
     wsrep_status_t (*append_row_key)(wsrep_t *, 
-                                     const trx_id_t       trx_id, 
-                                     const char          *dbtable,
-                                     const size_t         dbtable_len,
-                                     const char          *key, 
-                                     const size_t         key_len, 
-                                     const wsrep_action_t action);
+                                     trx_id_t       trx_id, 
+                                     const char    *dbtable,
+                                     size_t         dbtable_len,
+                                     const char    *key, 
+                                     size_t         key_len, 
+                                     wsrep_action_t action);
     
 
 /*!
@@ -411,11 +424,11 @@ struct wsrep_ {
  * @param key_len     length of the key data
  */
     wsrep_status_t (*set_variable)(wsrep_t *,
-                                   const conn_id_t  conn_id, 
-                                   const char      *key,
-                                   const size_t     key_len,
-                                   const char      *query,
-                                   const size_t     query_len);
+                                   conn_id_t   conn_id, 
+                                   const char *key,
+                                   size_t      key_len,
+                                   const char *query,
+                                   size_t      query_len);
 
 /*!
  * @brief appends a set database command connection's write set
@@ -425,9 +438,9 @@ struct wsrep_ {
  * @param query_len   length of query (does not end with 0)
  */
     wsrep_status_t (*set_database)(wsrep_t *,
-                                   const conn_id_t  conn_id,
-                                   const char      *query,
-                                   const size_t     query_len);
+                                   conn_id_t   conn_id,
+                                   const char *query,
+                                   size_t      query_len);
     
 
 /*!
@@ -446,9 +459,9 @@ struct wsrep_ {
  * @retval WSREP_NODE_FAIL  must close all connections and reinit
  */
     wsrep_status_t (*to_execute_start)(wsrep_t *, 
-                                       const conn_id_t  conn_id, 
-                                       const char      *query, 
-                                       const size_t     query_len);
+                                       conn_id_t   conn_id, 
+                                       const char *query, 
+                                       size_t      query_len);
 
     wsrep_status_t (*to_execute_end)(wsrep_t *, conn_id_t conn_id);
 
