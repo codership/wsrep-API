@@ -39,7 +39,7 @@ typedef uint64_t conn_id_t;     //!< application connection ID
 typedef int64_t  wsrep_seqno_t; //!< sequence number of a writeset, etc.
 
 /*! Undefined seqno */
-static const wsrep_seqno_t WSREP_SEQNO_UNDEFINED;
+static const wsrep_seqno_t WSREP_SEQNO_UNDEFINED = -1;
 
 typedef enum wsrep_action {
     WSREP_UPDATE,
