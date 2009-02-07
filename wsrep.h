@@ -238,6 +238,7 @@ typedef struct wsrep_init_args {
     wsrep_view_cb_t         view_handler_cb;
     wsrep_ws_start_cb_t     ws_start_cb;
     wsrep_bf_execute_cb_t   bf_execute_sql_cb;
+    wsrep_bf_execute_cb_t   bf_execute_rbr_cb;
     wsrep_bf_apply_row_cb_t bf_apply_row_cb;
 } wsrep_init_args_t;
 
