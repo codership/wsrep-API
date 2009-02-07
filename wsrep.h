@@ -31,8 +31,8 @@ extern "C" {
 
 #define WSREP_INTERFACE_VERSION "2:0:0"
 
-/* No wsrep backend spec */
-extern const char* const WSREP_NONE;
+/* Empty backend spec */
+#define WSREP_NONE "none"
 
 typedef uint64_t trx_id_t;      //!< applicaiton transaction ID
 typedef uint64_t conn_id_t;     //!< application connection ID

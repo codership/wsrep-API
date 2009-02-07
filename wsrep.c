@@ -24,8 +24,6 @@
 
 #include "wsrep.h"
 
-const char* const WSREP_NONE = "none";
-
 // Logging stuff for the loader
 static const char* log_levels[] = {"FATAL", "ERROR", "WARN", "INFO", "DEBUG"};
 
