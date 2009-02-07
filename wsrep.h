@@ -39,7 +39,7 @@ typedef uint64_t conn_id_t;     //!< application connection ID
 typedef int64_t  wsrep_seqno_t; //!< sequence number of a writeset, etc.
 
 /*! Undefined seqno */
-static wsrep_seqno_t WSREP_SEQNO_UNDEFINED = -1;
+static const wsrep_seqno_t WSREP_SEQNO_UNDEFINED;
 
 typedef enum wsrep_action {
     WSREP_UPDATE,
@@ -115,7 +115,7 @@ typedef struct wsrep_uuid {
 } wsrep_uuid_t;
 
 /*! Undefined UUID */
-static wsrep_uuid_t WSREP_UUID_UNDEFINED = {{0,}};
+static const wsrep_uuid_t WSREP_UUID_UNDEFINED = {{0,}};
 
 /*!
  * Maximum logical member name length
