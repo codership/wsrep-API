@@ -64,7 +64,6 @@ typedef enum wsrep_conf_param_id {
     WSREP_CONF_LOCAL_CACHE_SIZE,  //!< max size for local cache
     WSREP_CONF_WS_PERSISTENCY,    //!< WS persistency policy
     WSREP_CONF_DEBUG,             //!< enable debug level logging
-    WSREP_STAT_MAX_SEQNO,             //!< status of max seqno applied
 } wsrep_conf_param_id_t;
 
 typedef enum wsrep_conf_param_type {
