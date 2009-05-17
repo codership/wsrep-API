@@ -211,6 +211,24 @@ static wsrep_status_t dummy_to_execute_end(
     return WSREP_OK;
 }
 
+static wsrep_status_t dummy_state_sent(
+    wsrep_t *w,
+    const wsrep_uuid_t* uuid   __attribute__((unused)),
+    wsrep_seqno_t       seqno  __attribute__((unused)))
+{
+    DBUG_ENTER(w);
+    return WSREP_OK;
+}
+
+static wsrep_status_t dummy_state_received(
+    wsrep_t *w,
+    const wsrep_uuid_t* uuid  __attribute__((unused)),
+    wsrep_seqno_t       seqno __attribute__((unused)))
+{
+    DBUG_ENTER(w);
+    return WSREP_OK;
+}
+
 static wsrep_t dummy_init_str = {
     WSREP_INTERFACE_VERSION,
     &dummy_init,
@@ -231,6 +249,8 @@ static wsrep_t dummy_init_str = {
     &dummy_set_database,
     &dummy_to_execute_start,
     &dummy_to_execute_end,
+    &dummy_state_sent,
+    &dummy_state_received,
     &dummy_tear_down,
     NULL,
     NULL
@@ -271,7 +291,15 @@ static int verify(const wsrep_t *wh, const char *iface_ver)
 
     VERIFY(wh);
     VERIFY(wh->version);
-    VERIFY(strcmp(wh->version, iface_ver) == 0);
+
+    if (strcmp(wh->version, iface_ver)) {
+        snprintf (msg, msg_len,
+                  "WSREP interface version mismatch: required '%s', found '%s'",
+                  iface_ver, wh->version);
+        logger (WSREP_LOG_ERROR, msg);
+        return EINVAL;
+    }
+
     VERIFY(wh->init);
     VERIFY(wh->enable);
     VERIFY(wh->disable);
@@ -290,6 +318,8 @@ static int verify(const wsrep_t *wh, const char *iface_ver)
     VERIFY(wh->set_database);
     VERIFY(wh->to_execute_start);
     VERIFY(wh->to_execute_end);
+    VERIFY(wh->state_sent);
+    VERIFY(wh->state_received);
     return 0;
 }
 
@@ -376,8 +406,6 @@ out:
     return ret;
 }
 
-
-
 void wsrep_unload(wsrep_t *hptr)
 {
     if (!hptr) {
@@ -386,5 +414,60 @@ void wsrep_unload(wsrep_t *hptr)
         if (hptr->dlh)
             dlclose(hptr->dlh);
         free(hptr);
+    }
+}
+
+/*!
+ * Read UUID from string
+ * @return length of UUID string representation or -EINVAL in case of error
+ */
+#include <ctype.h>
+ssize_t
+wsrep_uuid_scan (const char* str, size_t str_len, wsrep_uuid_t* uuid)
+{
+    size_t uuid_len = 0;
+    size_t uuid_offt = 0;
+
+    while (uuid_len + 1 < str_len) {
+        if ((4  == uuid_offt || 6 == uuid_offt || 8 == uuid_offt ||
+             10 == uuid_offt) && str[uuid_len] == '-') {
+            // skip dashes after 4th, 6th, 8th and 10th positions
+            uuid_len += 1;
+            continue;
+        }
+        if (isxdigit(str[uuid_len]) && isxdigit(str[uuid_len + 1])) {
+            // got hex digit
+            sscanf (str + uuid_len, "%2hhx", uuid->uuid + uuid_offt);
+            uuid_len  += 2;
+            uuid_offt += 1;
+            if (sizeof (uuid->uuid) == uuid_offt)
+                return uuid_len;
+        }
+        else {
+            break;
+        }
+    }
+
+    *uuid = WSREP_UUID_UNDEFINED;
+    return -EINVAL;
+}
+
+/*!
+ * Write UUID to string
+ * @return length of UUID string representation or -EMSGSIZE if string is too
+ *         short 
+ */
+ssize_t
+wsrep_uuid_print (const wsrep_uuid_t* uuid, char* str, size_t str_len)
+{
+    if (str_len > 36) {
+        const unsigned char* u = uuid->uuid;
+        return snprintf(str, str_len, "%02x%02x%02x%02x-%02x%02x-%02x%02x-"
+                        "%02x%02x-%02x%02x%02x%02x%02x%02x",
+                        u[ 0], u[ 1], u[ 2], u[ 3], u[ 4], u[ 5], u[ 6], u[ 7],
+                        u[ 8], u[ 9], u[10], u[11], u[12], u[13], u[14], u[15]);
+    }
+    else {
+        return -EMSGSIZE;
     }
 }
