@@ -211,7 +211,7 @@ static wsrep_status_t dummy_to_execute_end(
     return WSREP_OK;
 }
 
-static wsrep_status_t dummy_state_sent(
+static wsrep_status_t dummy_sst_sent(
     wsrep_t *w,
     const wsrep_uuid_t* uuid   __attribute__((unused)),
     wsrep_seqno_t       seqno  __attribute__((unused)))
@@ -220,7 +220,7 @@ static wsrep_status_t dummy_state_sent(
     return WSREP_OK;
 }
 
-static wsrep_status_t dummy_state_received(
+static wsrep_status_t dummy_sst_received(
     wsrep_t *w,
     const wsrep_uuid_t* uuid  __attribute__((unused)),
     wsrep_seqno_t       seqno __attribute__((unused)))
@@ -249,8 +249,8 @@ static wsrep_t dummy_init_str = {
     &dummy_set_database,
     &dummy_to_execute_start,
     &dummy_to_execute_end,
-    &dummy_state_sent,
-    &dummy_state_received,
+    &dummy_sst_sent,
+    &dummy_sst_received,
     &dummy_tear_down,
     NULL,
     NULL
@@ -318,8 +318,8 @@ static int verify(const wsrep_t *wh, const char *iface_ver)
     VERIFY(wh->set_database);
     VERIFY(wh->to_execute_start);
     VERIFY(wh->to_execute_end);
-    VERIFY(wh->state_sent);
-    VERIFY(wh->state_received);
+    VERIFY(wh->sst_sent);
+    VERIFY(wh->sst_received);
     return 0;
 }
 
