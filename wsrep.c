@@ -349,7 +349,7 @@ int wsrep_load(const char *spec, wsrep_t **hptr, wsrep_log_cb_t log_cb)
         return EINVAL;
     
     snprintf (msg, msg_len,
-              "wsrep_load(): loading provider library '%s'\n", spec);
+              "wsrep_load(): loading provider library '%s'", spec);
     logger (WSREP_LOG_INFO, msg);
     
     if (!(*hptr = malloc(sizeof(wsrep_t)))) {
@@ -366,7 +366,7 @@ int wsrep_load(const char *spec, wsrep_t **hptr, wsrep_log_cb_t log_cb)
     }
     
     if (!(dlh = dlopen(spec, RTLD_NOW | RTLD_LOCAL))) {
-	snprintf(msg, msg_len, "wsrep_load(): dlopen(): %s\n", dlerror());
+	snprintf(msg, msg_len, "wsrep_load(): dlopen(): %s", dlerror());
         logger (WSREP_LOG_ERROR, msg);
         ret = EINVAL;
 	goto out;
@@ -378,7 +378,7 @@ int wsrep_load(const char *spec, wsrep_t **hptr, wsrep_log_cb_t log_cb)
     }
     
     if ((ret = (*dlfun)(*hptr)) != 0) {
-        snprintf(msg, msg_len, "wsrep_load(): loader failed: %s\n",
+        snprintf(msg, msg_len, "wsrep_load(): loader failed: %s",
                  strerror(ret));
         logger (WSREP_LOG_ERROR, msg);
         goto out;
@@ -386,7 +386,7 @@ int wsrep_load(const char *spec, wsrep_t **hptr, wsrep_log_cb_t log_cb)
     
     if ((ret = verify(*hptr, WSREP_INTERFACE_VERSION)) != 0 &&
         (*hptr)->tear_down) {
-	logger (WSREP_LOG_ERROR, "wsrep_load(): interface version mismatch\n");
+	logger (WSREP_LOG_ERROR, "wsrep_load(): interface version mismatch.");
         (*hptr)->tear_down(*hptr);
         goto out;
     }
@@ -400,7 +400,7 @@ out:
         free(*hptr);
         *hptr = NULL;
     } else {
-        logger (WSREP_LOG_INFO, "wsrep_load(): provider loaded succesfully\n");
+        logger (WSREP_LOG_INFO, "wsrep_load(): provider loaded succesfully.");
     }
 
     return ret;
@@ -409,7 +409,7 @@ out:
 void wsrep_unload(wsrep_t *hptr)
 {
     if (!hptr) {
-        logger (WSREP_LOG_WARN, "wsrep_unload(): null pointer\n");
+        logger (WSREP_LOG_WARN, "wsrep_unload(): null pointer.");
     } else {
         if (hptr->dlh)
             dlclose(hptr->dlh);
