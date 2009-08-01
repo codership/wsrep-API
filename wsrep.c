@@ -55,7 +55,8 @@ static void dummy_tear_down(wsrep_t *w)
     w->opaque = NULL;
 }
 
-static wsrep_status_t dummy_init(wsrep_t *w, const wsrep_init_args_t* args)
+static wsrep_status_t dummy_init (wsrep_t *w,
+                                  const struct wsrep_init_args* args)
 {
     DUMMY_PRIV(w)->log_fn = args->logger_cb;
     DBUG_ENTER(w);
