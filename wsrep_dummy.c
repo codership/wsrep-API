@@ -36,7 +36,7 @@ typedef struct wsrep_dummy
     } while (0)
 
 
-static void dummy_tear_down(wsrep_t *w)
+static void dummy_free(wsrep_t *w)
 {
     WSREP_DBUG_ENTER(w);
     free(w->ctx);
@@ -51,13 +51,15 @@ static wsrep_status_t dummy_init (wsrep_t *w,
     return WSREP_OK;
 }
 
-static wsrep_status_t dummy_enable(wsrep_t *w)
+static wsrep_status_t dummy_connect(wsrep_t *w,
+                                    const char* name __attribute__((unused)),
+                                    const char* addr __attribute__((unused)))
 {
     WSREP_DBUG_ENTER(w);
     return WSREP_OK;
 }
 
-static wsrep_status_t dummy_disable(wsrep_t *w)
+static wsrep_status_t dummy_disconnect(wsrep_t *w)
 {
     WSREP_DBUG_ENTER(w);
     return WSREP_OK;
@@ -221,8 +223,8 @@ static wsrep_status_t dummy_sst_received(
 static wsrep_t dummy_iface = {
     WSREP_INTERFACE_VERSION,
     &dummy_init,
-    &dummy_enable,
-    &dummy_disable,
+    &dummy_connect,
+    &dummy_disconnect,
     &dummy_dbug_push,
     &dummy_dbug_pop,
     &dummy_recv,
@@ -240,7 +242,7 @@ static wsrep_t dummy_iface = {
     &dummy_to_execute_end,
     &dummy_sst_sent,
     &dummy_sst_received,
-    &dummy_tear_down,
+    &dummy_free,
     NULL,
     NULL
 };

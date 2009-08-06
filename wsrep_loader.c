@@ -60,8 +60,8 @@ static int verify(const wsrep_t *wh, const char *iface_ver)
     }
 
     VERIFY(wh->init);
-    VERIFY(wh->enable);
-    VERIFY(wh->disable);
+    VERIFY(wh->connect);
+    VERIFY(wh->disconnect);
     VERIFY(wh->dbug_push);
     VERIFY(wh->dbug_pop);
     VERIFY(wh->recv);
@@ -146,9 +146,9 @@ int wsrep_load(const char *spec, wsrep_t **hptr, wsrep_log_cb_t log_cb)
     }
     
     if ((ret = verify(*hptr, WSREP_INTERFACE_VERSION)) != 0 &&
-        (*hptr)->tear_down) {
+        (*hptr)->free) {
 	logger (WSREP_LOG_ERROR, "wsrep_load(): interface version mismatch.");
-        (*hptr)->tear_down(*hptr);
+        (*hptr)->free(*hptr);
         goto out;
     }
     
@@ -172,8 +172,8 @@ void wsrep_unload(wsrep_t *hptr)
     if (!hptr) {
         logger (WSREP_LOG_WARN, "wsrep_unload(): null pointer.");
     } else {
-        if (hptr->tear_down)
-            hptr->tear_down(hptr);
+        if (hptr->free)
+            hptr->free(hptr);
         if (hptr->dlh)
             dlclose(hptr->dlh);
         free(hptr);
