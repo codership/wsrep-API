@@ -52,8 +52,9 @@ static wsrep_status_t dummy_init (wsrep_t *w,
 }
 
 static wsrep_status_t dummy_connect(wsrep_t *w,
-                                    const char* name __attribute__((unused)),
-                                    const char* addr __attribute__((unused)))
+                                    const char* name  __attribute__((unused)),
+                                    const char* url   __attribute__((unused)),
+                                    const char* donor __attribute__((unused)))
 {
     WSREP_DBUG_ENTER(w);
     return WSREP_OK;
