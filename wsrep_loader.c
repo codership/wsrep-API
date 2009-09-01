@@ -60,17 +60,17 @@ static int verify(const wsrep_t *wh, const char *iface_ver)
     }
 
     VERIFY(wh->init);
+    VERIFY(wh->options_set);
+    VERIFY(wh->options_get);
     VERIFY(wh->connect);
     VERIFY(wh->disconnect);
-    VERIFY(wh->dbug_push);
-    VERIFY(wh->dbug_pop);
     VERIFY(wh->recv);
-    VERIFY(wh->commit);
+    VERIFY(wh->pre_commit);
+    VERIFY(wh->post_commit);
+    VERIFY(wh->post_rollback);
     VERIFY(wh->replay_trx);
-    VERIFY(wh->cancel_commit);
-    VERIFY(wh->cancel_slave);
-    VERIFY(wh->committed);
-    VERIFY(wh->rolledback);
+    VERIFY(wh->abort_pre_commit);
+    VERIFY(wh->abort_slave_trx);
     VERIFY(wh->append_query);
     VERIFY(wh->append_row_key);
     VERIFY(wh->set_variable);
@@ -100,7 +100,7 @@ int wsrep_load(const char *spec, wsrep_t **hptr, wsrep_log_cb_t log_cb)
     int ret = 0;
     void *dlh = NULL;
     wsrep_loader_fun dlfun;
-    const size_t msg_len = 128;
+    const size_t msg_len = 1024;
     char msg[msg_len];
 
     if (NULL != log_cb)
