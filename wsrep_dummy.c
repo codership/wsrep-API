@@ -73,7 +73,11 @@ static wsrep_status_t dummy_connect(wsrep_t* w,
     return WSREP_OK;
 }
 
-static wsrep_status_t dummy_disconnect(wsrep_t* w)
+static wsrep_status_t dummy_disconnect(
+    wsrep_t* w,
+    wsrep_uuid_t*  uuid  __attribute__((unused)),
+    wsrep_seqno_t* seqno __attribute__((unused))
+)
 {
     WSREP_DBUG_ENTER(w);
     return WSREP_OK;
@@ -222,6 +226,22 @@ static wsrep_status_t dummy_sst_received(
     return WSREP_OK;
 }
 
+static struct wsrep_status_var dummy_status = { NULL, 0, { 0 } };
+
+static struct wsrep_status_var* dummy_status_get (wsrep_t* w)
+{
+    WSREP_DBUG_ENTER(w);
+    return &dummy_status;
+}
+
+void dummy_status_free (
+    wsrep_t* w,
+    struct wsrep_status_var* status __attribute__((unused))
+    )
+{
+    WSREP_DBUG_ENTER(w);
+}
+
 static wsrep_t dummy_iface = {
     WSREP_INTERFACE_VERSION,
     &dummy_init,
@@ -244,6 +264,11 @@ static wsrep_t dummy_iface = {
     &dummy_to_execute_end,
     &dummy_sst_sent,
     &dummy_sst_received,
+    &dummy_status_get,
+    &dummy_status_free,
+    WSREP_NONE,
+    WSREP_INTERFACE_VERSION,
+    "Codership Oy <info@codership.com>",
     &dummy_free,
     NULL,
     NULL

@@ -30,7 +30,7 @@ extern "C" {
  *  wsrep replication API
  */
 
-#define WSREP_INTERFACE_VERSION "12"
+#define WSREP_INTERFACE_VERSION "13"
 
 /* Empty backend spec */
 #define WSREP_NONE "none"
@@ -40,7 +40,7 @@ typedef uint64_t conn_id_t;     //!< application connection ID
 typedef int64_t  wsrep_seqno_t; //!< sequence number of a writeset, etc.
 
 /*! undefined seqno */
-static const wsrep_seqno_t WSREP_SEQNO_UNDEFINED = -1;
+#define WSREP_SEQNO_UNDEFINED (-1)
 
 /*! DML operation codes */
 typedef enum wsrep_action {
@@ -61,33 +61,6 @@ typedef enum wsrep_status {
     WSREP_FATAL,           //!< fatal error, server must abort
     WSREP_NOT_IMPLEMENTED, //!< feature not implemented
 } wsrep_status_t;
-
-/*! datatypes for parameters */
-typedef enum wsrep_status_param_type {
-    WSREP_TYPE_INT,        //!< integer type
-    WSREP_TYPE_DOUBLE,     //!< float
-    WSREP_TYPE_STRING,     //!< null terminated string
-} wsrep_status_param_type_t;
-
-/*! statistic parameter identifiers */
-typedef enum wsrep_status_param_id {
-    WSREP_STAT_LAST_SEQNO, //!< last seqno applied
-    WSREP_STAT_MAX
-} wsrep_status_param_id_t;
-
-/*!
- * @brief callback to set statistic parameter value
- *
- * The function should be able to set values for all
- * parameters defined in enum wsrep_stat_param_id
- *
- * @param statistic parameter identifier
- * @param parameter type (same as for configuration parameters)
- * @param value of the parameter
- */
-typedef void (*wsrep_status_param_cb_t)(wsrep_status_param_id_t,
-                                        wsrep_status_param_type_t,
-                                        void* value);
 
 /*!
  * @brief log severity levels, passed as first argument to log handler
@@ -142,6 +115,7 @@ wsrep_uuid_print (const wsrep_uuid_t* uuid, char* str, size_t str_len);
  * maximum logical member name length
  */
 #define WSREP_MEMBER_NAME_LEN 32
+#define WSREP_INCOMING_LEN    256 // max Domain Name length + 0x00
 
 /*!
  * member status
@@ -159,13 +133,13 @@ typedef enum wsrep_member_status {
  */
 typedef struct wsrep_member_info {
     wsrep_uuid_t  id;                         //!< group-wide unique member ID
-    char          name[WSREP_MEMBER_NAME_LEN];//!< human-readable name
     wsrep_seqno_t last_committed;             //!< last committed seqno
     wsrep_seqno_t slave_queue_len;            //!< length of the slave queue
     wsrep_member_status_t status;             //!< member status
     int           cpu_usage;                  //!< CPU utilization (%) 0..100
     int           load_avg;                   //!< Load average (%) can be > 100
-    char*         incoming;                   //!< address for client requests 
+    char          name[WSREP_MEMBER_NAME_LEN];//!< human-readable name
+    char          incoming[WSREP_INCOMING_LEN];//!< address for client requests 
 } wsrep_member_info_t;
 
 /*!
@@ -293,29 +267,34 @@ typedef ssize_t (*wsrep_sst_prepare_cb_t) (void** msg);
  * to deliver state to a new cluster member.
  * No state changes will be committed for the duration of this call.
  *
- * @param msg state transfer request message
+ * @param msg     state transfer request message
  * @param msg_len state transfer request message length
+ * @param uuid    current state uuid on this node
+ * @param seqno   current state seqno on this node
  * @return 0 for success or negative error code
  */
-typedef int (*wsrep_sst_donate_cb_t) (const void* msg, size_t msg_len);
+typedef int (*wsrep_sst_donate_cb_t) (const void*         msg,
+                                      size_t              msg_len,
+                                      const wsrep_uuid_t* uuid,
+                                      wsrep_seqno_t       seqno);
 
 /*!
  * Initialization parameters for wsrep, used as arguments for wsrep_init()
  */
-struct wsrep_init_args {
+struct wsrep_init_args
+{
     /* Configuration parameters */
     const char* node_name;     //!< Symbolic name of this node (e.g. hostname)
     const char* node_incoming; //!< Address for incoming client connections
     const char* data_dir;      //!< directory where wsrep files are kept if any
     const char* options;       //!< provider-specific configuration string
 
-    /* Application state information */
-    wsrep_uuid_t  state_uuid; //!< Application state sequence UUID
-    wsrep_seqno_t state_seqno;//!< Applicaiton state sequence number
+    /* Application initial state information. */
+    const wsrep_uuid_t* state_uuid;  //!< Application state sequence UUID
+    wsrep_seqno_t       state_seqno; //!< Applicaiton state sequence number
 
     /* Application callbacks */
     wsrep_log_cb_t            logger_cb;       //!< logging handler
-    wsrep_status_param_cb_t   status_param_cb; //!< statistic handler
     wsrep_view_cb_t           view_handler_cb; //!< group view change handler
 
     /* applier callbacks */
@@ -325,6 +304,27 @@ struct wsrep_init_args {
     /* state snapshot transfer callbacks */
     wsrep_sst_prepare_cb_t    sst_prepare_cb;  //!< donor side prepare handler
     wsrep_sst_donate_cb_t     sst_donate_cb;   //!< starting to donate
+};
+
+/*! Type of the status variable value in struct wsrep_status_var */
+typedef enum wsrep_var_type
+{
+    WSREP_STATUS_STRING, //!< pointer to null-terminated string
+    WSREP_STATUS_INT64,  //!< int64_t
+    WSREP_STATUS_DOUBLE, //!< double
+}
+wsrep_var_type_t;
+
+/*! Generalized status variable representation */
+struct wsrep_status_var
+{
+    const char*      name;     //!< variable name
+    wsrep_var_type_t type;     //!< variable value type
+    union {
+        int64_t     _int64;
+        double      _double;
+        const char* _string;
+    } value;                   //!< variable value
 };
 
 typedef struct wsrep_ wsrep_t;
@@ -380,10 +380,18 @@ struct wsrep_ {
                                const char* state_donor);
 
   /*!
-   * @brief Closes connection to cluster 
-   * @param wsrep this wsrep handler
+   * @brief Closes connection to cluster.
+   *
+   * If state_uuid and/or state_seqno is not NULL, will store final state
+   * in there.
+   *
+   * @param wsrep this  wsrep handler
+   * @param state_uuid  pointer to store the last state uuid
+   * @param state_seqno pointer to store the last state seqno
    */
-    wsrep_status_t (*disconnect)(wsrep_t*);
+    wsrep_status_t (*disconnect)(wsrep_t*,
+                                 wsrep_uuid_t*  state_uuid,
+                                 wsrep_seqno_t* state_seqno);
 
   /*!
    * @brief start receiving replication events
@@ -397,11 +405,12 @@ struct wsrep_ {
     
   /*!
    * @brief Replicates/logs result of transaction to other nodes and allocates
-   * required resources. Starts commit critical section.
+   * required resources.
    *
    * Must be called before transaction commit. Returns success code, which
-   * caller must check. 
-   * In case of WSREP_OK, transaction can commit, otherwise must rollback.
+   * caller must check.
+   * In case of WSREP_OK, starts commit critical section, transaction can
+   * commit. Otherwise transaction must rollback.
    *
    * @param wsrep    this wsrep handle
    * @param trx_id   transaction which is committing
@@ -433,8 +442,6 @@ struct wsrep_ {
 
   /*!
    * @brief Releases resources after transaction rollback.
-   *
-   * Ends commit critical section.
    *
    * @param wsrep      this wsrep handle
    * @param trx_id     transaction which is committing
@@ -627,6 +634,37 @@ struct wsrep_ {
                                    wsrep_seqno_t       seqno);
 
   /*!
+   * @brief Returns an array fo status variables.
+   *        Array is terminated by Null variable name.
+   *
+   * @param wsrep this wsrep handle
+   * @return array of struct wsrep_status_var
+   */
+    struct wsrep_status_var* (*status_get) (wsrep_t*);
+
+  /*!
+   * @brief Release resources that might be associated with the array
+   *
+   * @param wsrep this wsrep handle
+   */
+    void (*status_free) (wsrep_t*, struct wsrep_status_var* var_array);
+
+  /*!
+   * wsrep provider name
+   */
+    const char* provider_name;
+
+  /*!
+   * wsrep provider version
+   */
+    const char* provider_version;
+
+  /*!
+   * wsrep provider vendor name
+   */
+    const char* provider_vendor;
+
+  /*!
    * @brief Frees allocated resources before unloading the library.
    * @param wsrep this wsrep handle
    */
@@ -635,9 +673,9 @@ struct wsrep_ {
     void *dlh;    //!< reserved for future use
     void *ctx;    //!< reserved for implemetation private context
 };
+
     
 typedef int (*wsrep_loader_fun)(wsrep_t*);
-
 
 /*!
  *
