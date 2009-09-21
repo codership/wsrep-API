@@ -30,14 +30,14 @@ extern "C" {
  *  wsrep replication API
  */
 
-#define WSREP_INTERFACE_VERSION "13"
+#define WSREP_INTERFACE_VERSION "14"
 
 /* Empty backend spec */
 #define WSREP_NONE "none"
 
-typedef uint64_t trx_id_t;      //!< applicaiton transaction ID
-typedef uint64_t conn_id_t;     //!< application connection ID
-typedef int64_t  wsrep_seqno_t; //!< sequence number of a writeset, etc.
+typedef uint64_t wsrep_trx_id_t;  //!< application transaction ID
+typedef uint64_t wsrep_conn_id_t; //!< application connection ID
+typedef int64_t  wsrep_seqno_t;   //!< sequence number of a writeset, etc.
 
 /*! undefined seqno */
 #define WSREP_SEQNO_UNDEFINED (-1)
@@ -424,10 +424,10 @@ struct wsrep_ {
    * @retval WSREP_NODE_FAIL  must close all connections and reinit
    */
     wsrep_status_t (*pre_commit)(wsrep_t*,
-                                 trx_id_t    trx_id,
-                                 conn_id_t   conn_id, 
-                                 const char* app_data,
-                                 size_t      data_len);
+                                 wsrep_trx_id_t  trx_id,
+                                 wsrep_conn_id_t conn_id, 
+                                 const char*     app_data,
+                                 size_t          data_len);
     
   /*!
    * @brief Releases resources after transaction commit.
@@ -438,7 +438,7 @@ struct wsrep_ {
    * @param trx_id     transaction which is committing
    * @retval WSREP_OK  post_commit succeeded
    */
-    wsrep_status_t (*post_commit) (wsrep_t*, trx_id_t trx_id);
+    wsrep_status_t (*post_commit) (wsrep_t*, wsrep_trx_id_t trx_id);
 
   /*!
    * @brief Releases resources after transaction rollback.
@@ -447,7 +447,7 @@ struct wsrep_ {
    * @param trx_id     transaction which is committing
    * @retval WSREP_OK  post_rollback succeeded
    */
-    wsrep_status_t (*post_rollback)(wsrep_t*, trx_id_t trx_id);    
+    wsrep_status_t (*post_rollback)(wsrep_t*, wsrep_trx_id_t trx_id);    
 
   /*!
    * @brief Replay trx as a slave write set
@@ -469,8 +469,8 @@ struct wsrep_ {
    * @retval WSREP_NODE_FAIL  must close all connections and reinit
    */
     wsrep_status_t (*replay_trx)(wsrep_t*,
-                                 trx_id_t trx_id,
-                                 void*    app_ctx);
+                                 wsrep_trx_id_t trx_id,
+                                 void*          app_ctx);
 
   /*!
    * @brief Abort pre_commit() call of another thread.
@@ -489,8 +489,8 @@ struct wsrep_ {
    * @retval WSREP_WARNING    abort failed
    */
     wsrep_status_t (*abort_pre_commit)(wsrep_t*,
-                                       wsrep_seqno_t bf_seqno,
-                                       trx_id_t      victim_trx);
+                                       wsrep_seqno_t  bf_seqno,
+                                       wsrep_trx_id_t victim_trx);
 
   /*!
    * @brief Abort another slave transaction
@@ -518,10 +518,10 @@ struct wsrep_ {
    * @param randseed seed for rand
    */
     wsrep_status_t (*append_query)(wsrep_t*,
-                                   trx_id_t    trx_id,
-                                   const char* query, 
-                                   time_t      timeval,
-                                   uint32_t    randseed);
+                                   wsrep_trx_id_t  trx_id,
+                                   const char*     query, 
+                                   time_t          timeval,
+                                   uint32_t        randseed);
     
   /*!
    * @brief Appends a row reference in transaction's write set
@@ -535,7 +535,7 @@ struct wsrep_ {
    * @param action      action code according to enum wsrep_action
    */
     wsrep_status_t (*append_row_key)(wsrep_t*, 
-                                     trx_id_t       trx_id, 
+                                     wsrep_trx_id_t trx_id, 
                                      const char*    dbtable,
                                      size_t         dbtable_len,
                                      const char*    key, 
@@ -554,11 +554,11 @@ struct wsrep_ {
    * @param query_len   length of query (does not end with 0)
    */
     wsrep_status_t (*set_variable)(wsrep_t*,
-                                   conn_id_t   conn_id, 
-                                   const char* key,
-                                   size_t      key_len,
-                                   const char* query,
-                                   size_t      query_len);
+                                   wsrep_conn_id_t   conn_id, 
+                                   const char*       key,
+                                   size_t            key_len,
+                                   const char*       query,
+                                   size_t            query_len);
 
   /*!
    * @brief Appends a set database command connection's write set
@@ -569,9 +569,9 @@ struct wsrep_ {
    * @param query_len   length of query (does not end with 0)
    */
     wsrep_status_t (*set_database)(wsrep_t*,
-                                   conn_id_t   conn_id,
-                                   const char* query,
-                                   size_t      query_len);
+                                   wsrep_conn_id_t   conn_id,
+                                   const char*       query,
+                                   size_t            query_len);
     
 
   /*!
@@ -591,9 +591,9 @@ struct wsrep_ {
    * @retval WSREP_NODE_FAIL  must close all connections and reinit
    */
     wsrep_status_t (*to_execute_start)(wsrep_t*, 
-                                       conn_id_t   conn_id, 
-                                       const char* query, 
-                                       size_t      query_len);
+                                       wsrep_conn_id_t   conn_id, 
+                                       const char*       query, 
+                                       size_t            query_len);
 
   /*!
    * @brief Ends the total order isolation section.
@@ -608,7 +608,7 @@ struct wsrep_ {
    * @retval WSREP_CONN_FAIL  must close client connection
    * @retval WSREP_NODE_FAIL  must close all connections and reinit
    */
-    wsrep_status_t (*to_execute_end)(wsrep_t*, conn_id_t conn_id);
+    wsrep_status_t (*to_execute_end)(wsrep_t*, wsrep_conn_id_t conn_id);
 
   /*!
    * @brief Signals to wsrep provider that state snapshot has been sent to
