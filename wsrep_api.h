@@ -30,7 +30,7 @@ extern "C" {
  *  wsrep replication API
  */
 
-#define WSREP_INTERFACE_VERSION "15"
+#define WSREP_INTERFACE_VERSION "16"
 
 /* Empty backend spec */
 #define WSREP_NONE "none"
@@ -46,7 +46,7 @@ typedef int64_t  wsrep_seqno_t;   //!< sequence number of a writeset, etc.
 typedef enum wsrep_action {
     WSREP_UPDATE,          //!< update for a row
     WSREP_DELETE,          //!< row delete
-    WSREP_INSERT,          //!< new row insert
+    WSREP_INSERT           //!< new row insert
 } wsrep_action_t;
 
 /*! wsrep status codes */
@@ -59,7 +59,7 @@ typedef enum wsrep_status {
     WSREP_CONN_FAIL,       //!< error in client connection, must abort
     WSREP_NODE_FAIL,       //!< error in node state, wsrep must reinit
     WSREP_FATAL,           //!< fatal error, server must abort
-    WSREP_NOT_IMPLEMENTED, //!< feature not implemented
+    WSREP_NOT_IMPLEMENTED  //!< feature not implemented
 } wsrep_status_t;
 
 /*!
@@ -163,7 +163,7 @@ typedef struct wsrep_view_info {
     bool                state_gap; //!< discontinuity between group and member states
     int                 my_idx;    //!< index of this member in the view
     int                 memb_num;  //!< number of members in the view
-    wsrep_member_info_t members[]; //!< array of member information
+    wsrep_member_info_t members[1]; //!< array of member information
 } wsrep_view_info_t;
 
 /*!
@@ -171,28 +171,27 @@ typedef struct wsrep_view_info {
  *
  * This handler is called in total order corresponding to the group
  * configuration change. It is to provide a vital information about
- * new group view.
+ * new group view. If view info indicates existence of discontinuity
+ * between group and member states, state transfer request message
+ * should be filled in by the callback implementation.
  *
- * @param view new view on the group
- */
-typedef void (*wsrep_view_cb_t) (wsrep_view_info_t* view);
-
-/*!
- * @brief transaction initialization function
+ * @note Currently it is assumed that sst_req is allocated using 
+ *       malloc()/calloc()/realloc() and it will be freed by
+ *       wsrep implementation.
  *
- * This handler is called from wsrep library to initialize
- * the context for following write set applying.
- *
- * @param context pointer provided by the application
- * @param sequence number
+ * @param ctx         application context
+ * @param view        new view on the group
+ * @param state       current state
+ * @param state_len   lenght of current state
+ * @param sst_req     location to store SST request
+ * @param sst_req_len location to store SST request length or error code
  */
-//DELETE typedef int (*wsrep_ws_start_cb_t)(void *ctx, wsrep_seqno_t seqno);
-
-/*!
- * data buffer for applying callback. Data is prepared in the master
- * node and contains all information, which is required for applying 
- * the write set.
- */
+typedef void (*wsrep_view_cb_t) (void*              ctx,
+                                 wsrep_view_info_t* view,
+                                 const char*        state,
+                                 size_t             state_len,
+                                 void**             sst_req,
+                                 ssize_t*           sst_req_len);
 
 /*!
  * applying data representations
@@ -250,61 +249,70 @@ typedef enum wsrep_status (*wsrep_bf_apply_cb_t)(void*               ctx,
                                                  wsrep_seqno_t       seqno);
 
 /*!
- * @brief a callback to prepare the application to receive state snapshot
- *
- * This handler is called from wsrep library when it detects that
- * this node needs state transfer (misses some actions).
- * No group actions will be delivered for the duration of this call.
- *
- * @param msg state trasfer request message
- * @return size of the message or negative error code
- */
-typedef ssize_t (*wsrep_sst_prepare_cb_t) (void** msg);
-
-/*!
  * @brief a callback to donate state snapshot
  *
  * This handler is called from wsrep library when it needs this node
  * to deliver state to a new cluster member.
  * No state changes will be committed for the duration of this call.
+ * Wsrep implementation may provide internal state to be transmitted
+ * to new cluster member for initial state.
  *
- * @param msg     state transfer request message
- * @param msg_len state transfer request message length
- * @param uuid    current state uuid on this node
- * @param seqno   current state seqno on this node
+ * @param msg       state transfer request message
+ * @param msg_len   state transfer request message length
+ * @param uuid      current state uuid on this node
+ * @param seqno     current state seqno on this node
+ * @param state     current wsrep internal state buffer
+ * @param state_len current wsrep internal state buffer len
  * @return 0 for success or negative error code
  */
-typedef int (*wsrep_sst_donate_cb_t) (const void*         msg,
+typedef int (*wsrep_sst_donate_cb_t) (void* ctx,
+                                      const void*         msg,
                                       size_t              msg_len,
                                       const wsrep_uuid_t* uuid,
-                                      wsrep_seqno_t       seqno);
+                                      wsrep_seqno_t       seqno,
+                                      const char*         state,
+                                      size_t              state_len);
+
+/*!
+ * @brief a callback to signal application that wsrep state is synced 
+ *        with cluster
+ *
+ * This callback is called after wsrep library has got in sync with
+ * rest of the cluster.
+ *
+ * @param ctx application context
+ */
+typedef void (*wsrep_synced_cb_t)(void* ctx);
+
 
 /*!
  * Initialization parameters for wsrep, used as arguments for wsrep_init()
  */
 struct wsrep_init_args
 {
+    void* app_ctx;             //!< Application context to be passed for callbacks
     /* Configuration parameters */
     const char* node_name;     //!< Symbolic name of this node (e.g. hostname)
     const char* node_incoming; //!< Address for incoming client connections
     const char* data_dir;      //!< directory where wsrep files are kept if any
     const char* options;       //!< provider-specific configuration string
-
+    
     /* Application initial state information. */
     const wsrep_uuid_t* state_uuid;  //!< Application state sequence UUID
     wsrep_seqno_t       state_seqno; //!< Applicaiton state sequence number
+    const char*         state;       //!< Initial state for wsrep implementation
+    size_t              state_len;   //!< Length of state buffer
 
     /* Application callbacks */
     wsrep_log_cb_t            logger_cb;       //!< logging handler
     wsrep_view_cb_t           view_handler_cb; //!< group view change handler
-
+    
     /* applier callbacks */
     wsrep_bf_apply_cb_t       bf_apply_cb;     //!< applying callback
-//DELETE    wsrep_ws_start_cb_t       ws_start_cb;     //!< ws applying start handler
-
+    
     /* state snapshot transfer callbacks */
-    wsrep_sst_prepare_cb_t    sst_prepare_cb;  //!< donor side prepare handler
     wsrep_sst_donate_cb_t     sst_donate_cb;   //!< starting to donate
+    wsrep_synced_cb_t         synced_cb;       //!< synced with group
 };
 
 /*! Type of the status variable value in struct wsrep_status_var */
@@ -312,7 +320,7 @@ typedef enum wsrep_var_type
 {
     WSREP_STATUS_STRING, //!< pointer to null-terminated string
     WSREP_STATUS_INT64,  //!< int64_t
-    WSREP_STATUS_DOUBLE, //!< double
+    WSREP_STATUS_DOUBLE  //!< double
 }
 wsrep_var_type_t;
 
@@ -341,7 +349,8 @@ struct wsrep_ {
    *
    * @param args wsrep initialization parameters
    */
-    wsrep_status_t (*init)   (wsrep_t*, const struct wsrep_init_args* args);
+    wsrep_status_t (*init)   (wsrep_t*                      wsrep, 
+                              const struct wsrep_init_args* args);
 
   /*!
    * @brief Passes provider-specific configuration string to provider.
@@ -352,7 +361,7 @@ struct wsrep_ {
    * @retval WSREP_OK      configuration string was parsed successfully
    * @retval WSREP_WARNING could't not parse conf string, no action taken
    */
-    wsrep_status_t (*options_set) (wsrep_t*, const char* conf);
+    wsrep_status_t (*options_set) (wsrep_t* wsrep, const char* conf);
 
   /*!
    * @brief Returns provider-specific string with current configuration values.
@@ -362,7 +371,7 @@ struct wsrep_ {
    * @return a dynamically allocated string with current configuration
    *         parameter values
    */
-    char*          (*options_get) (wsrep_t*);
+    char*          (*options_get) (wsrep_t* wsrep);
 
   /*!
    * @brief Opens connection to cluster
@@ -375,7 +384,7 @@ struct wsrep_ {
    * @param cluster_url  URL-like cluster address (backend://address)
    * @param state_donor  name of the node to be asked for state transfer.
    */
-    wsrep_status_t (*connect) (wsrep_t*,
+    wsrep_status_t (*connect) (wsrep_t*    wsrep,
                                const char* cluster_name,
                                const char* cluster_url,
                                const char* state_donor);
@@ -387,12 +396,8 @@ struct wsrep_ {
    * in there.
    *
    * @param wsrep this  wsrep handler
-   * @param state_uuid  pointer to store the last state uuid
-   * @param state_seqno pointer to store the last state seqno
    */
-    wsrep_status_t (*disconnect)(wsrep_t*,
-                                 wsrep_uuid_t*  state_uuid,
-                                 wsrep_seqno_t* state_seqno);
+    wsrep_status_t (*disconnect)(wsrep_t* wsrep);
 
   /*!
    * @brief start receiving replication events
@@ -400,9 +405,8 @@ struct wsrep_ {
    * This function never returns
    *
    * @param wsrep this wsrep handle
-   * @param ctx   application context to be passed to callbacks
    */
-    wsrep_status_t (*recv)(wsrep_t*, void* ctx);
+    wsrep_status_t (*recv)(wsrep_t* wsrep);
 
   /*!
    * @brief Replicates/logs result of transaction to other nodes and allocates
@@ -425,7 +429,7 @@ struct wsrep_ {
    * @retval WSREP_CONN_FAIL  must close client connection
    * @retval WSREP_NODE_FAIL  must close all connections and reinit
    */
-    wsrep_status_t (*pre_commit)(wsrep_t*,
+    wsrep_status_t (*pre_commit)(wsrep_t*        wsrep,
                                  wsrep_trx_id_t  trx_id,
                                  wsrep_conn_id_t conn_id, 
                                  const void*     app_data,
@@ -441,7 +445,7 @@ struct wsrep_ {
    * @param trx_id     transaction which is committing
    * @retval WSREP_OK  post_commit succeeded
    */
-    wsrep_status_t (*post_commit) (wsrep_t*, wsrep_trx_id_t trx_id);
+    wsrep_status_t (*post_commit) (wsrep_t* wsrep, wsrep_trx_id_t trx_id);
 
   /*!
    * @brief Releases resources after transaction rollback.
@@ -450,7 +454,7 @@ struct wsrep_ {
    * @param trx_id     transaction which is committing
    * @retval WSREP_OK  post_rollback succeeded
    */
-    wsrep_status_t (*post_rollback)(wsrep_t*, wsrep_trx_id_t trx_id);    
+    wsrep_status_t (*post_rollback)(wsrep_t* wsrep, wsrep_trx_id_t trx_id);    
 
   /*!
    * @brief Replay trx as a slave write set
@@ -471,9 +475,8 @@ struct wsrep_ {
    * @retval WSREP_CONN_FAIL  must close client connection
    * @retval WSREP_NODE_FAIL  must close all connections and reinit
    */
-    wsrep_status_t (*replay_trx)(wsrep_t*,
-                                 wsrep_trx_id_t trx_id,
-                                 void*          app_ctx);
+    wsrep_status_t (*replay_trx)(wsrep_t*       wsrep,
+                                 wsrep_trx_id_t trx_id);
 
   /*!
    * @brief Abort pre_commit() call of another thread.
@@ -491,7 +494,7 @@ struct wsrep_ {
    * @retval WSREP_OK         abort secceded
    * @retval WSREP_WARNING    abort failed
    */
-    wsrep_status_t (*abort_pre_commit)(wsrep_t*,
+    wsrep_status_t (*abort_pre_commit)(wsrep_t*       wsrep,
                                        wsrep_seqno_t  bf_seqno,
                                        wsrep_trx_id_t victim_trx);
 
@@ -507,7 +510,7 @@ struct wsrep_ {
    * @retval WSREP_OK         abort secceded
    * @retval WSREP_WARNING    abort failed
    */
-    wsrep_status_t (*abort_slave_trx)(wsrep_t*,
+    wsrep_status_t (*abort_slave_trx)(wsrep_t*      wsrep,
                                       wsrep_seqno_t bf_seqno,
                                       wsrep_seqno_t victim_seqno);
 
@@ -520,11 +523,11 @@ struct wsrep_ {
    * @param timeval time to use for time functions
    * @param randseed seed for rand
    */
-    wsrep_status_t (*append_query)(wsrep_t*,
-                                   wsrep_trx_id_t  trx_id,
-                                   const char*     query, 
-                                   time_t          timeval,
-                                   uint32_t        randseed);
+    wsrep_status_t (*append_query)(wsrep_t*       wsrep,
+                                   wsrep_trx_id_t trx_id,
+                                   const char*    query, 
+                                   time_t         timeval,
+                                   uint32_t       randseed);
 
   /*!
    * @brief Appends a row reference in transaction's write set
@@ -537,13 +540,25 @@ struct wsrep_ {
    * @param key_len     length of the key data
    * @param action      action code according to enum wsrep_action
    */
-    wsrep_status_t (*append_row_key)(wsrep_t*, 
+    wsrep_status_t (*append_row_key)(wsrep_t*       wsrep, 
                                      wsrep_trx_id_t trx_id, 
                                      const char*    dbtable,
                                      size_t         dbtable_len,
                                      const char*    key, 
                                      size_t         key_len, 
                                      wsrep_action_t action);
+
+  /*!
+   * This call will block until causal ordering with all possible
+   * preceding writes in the cluster is guaranteed. If pointer to
+   * seqno is non-null, the call stores the global transaction ID
+   * of the last transaction which is guaranteed to be ordered 
+   * causally before this call.
+   * 
+   * @param wsrep this wsrep handle
+   * @param seqno location to store global transaction ID
+   */
+    wsrep_status_t (*causal_read)(wsrep_t* wsrep, wsrep_seqno_t* seqno);
 
   /*!
    * @brief Appends a set variable command connection's write set
@@ -555,13 +570,12 @@ struct wsrep_ {
    * @param query       the set variable query
    * @param query_len   length of query (does not end with 0)
    */
-    wsrep_status_t (*set_variable)(wsrep_t*,
-                                   wsrep_conn_id_t   conn_id, 
-                                   const char*       key,
-                                   size_t            key_len,
-                                   const char*       query,
-                                   size_t            query_len);
-
+    wsrep_status_t (*set_variable)(wsrep_t*        wsrep,
+                                   wsrep_conn_id_t conn_id, 
+                                   const char*     key,
+                                   size_t          key_len,
+                                   const char*     query,
+                                   size_t          query_len);
   /*!
    * @brief Appends a set database command connection's write set
    *
@@ -570,10 +584,10 @@ struct wsrep_ {
    * @param query       the 'set database' query
    * @param query_len   length of query (does not end with 0)
    */
-    wsrep_status_t (*set_database)(wsrep_t*,
-                                   wsrep_conn_id_t   conn_id,
-                                   const char*       query,
-                                   size_t            query_len);
+    wsrep_status_t (*set_database)(wsrep_t*        wsrep,
+                                   wsrep_conn_id_t conn_id,
+                                   const char*     query,
+                                   size_t          query_len);
 
   /*!
    * @brief Replicates a query and starts "total order isolation" section.
@@ -592,11 +606,11 @@ struct wsrep_ {
    * @retval WSREP_CONN_FAIL  must close client connection
    * @retval WSREP_NODE_FAIL  must close all connections and reinit
    */
-    wsrep_status_t (*to_execute_start)(wsrep_t*, 
-                                       wsrep_conn_id_t   conn_id, 
-                                       const void*       query, 
-                                       size_t            query_len,
-                                       wsrep_seqno_t*    seqno);
+    wsrep_status_t (*to_execute_start)(wsrep_t*        wsrep, 
+                                       wsrep_conn_id_t conn_id, 
+                                       const void*     query, 
+                                       size_t          query_len,
+                                       wsrep_seqno_t*  seqno);
 
   /*!
    * @brief Ends the total order isolation section.
@@ -611,7 +625,7 @@ struct wsrep_ {
    * @retval WSREP_CONN_FAIL  must close client connection
    * @retval WSREP_NODE_FAIL  must close all connections and reinit
    */
-    wsrep_status_t (*to_execute_end)(wsrep_t*, wsrep_conn_id_t conn_id);
+    wsrep_status_t (*to_execute_end)(wsrep_t* wsrep, wsrep_conn_id_t conn_id);
 
   /*!
    * @brief Signals to wsrep provider that state snapshot has been sent to
@@ -621,20 +635,45 @@ struct wsrep_ {
    * @param uuid   sequence UUID (group UUID)
    * @param seqno  sequence number or negative error code of the operation
    */
-    wsrep_status_t (*sst_sent)(wsrep_t*,
+    wsrep_status_t (*sst_sent)(wsrep_t*            wsrep,
                                const wsrep_uuid_t* uuid,
                                wsrep_seqno_t       seqno);
 
   /*!
    * @brief Signals to wsrep provider that new state snapshot has been received.
    *        May deadlock if called from sst_prepare_cb.
-   * @param wsrep this wsrep handle
-   * @param uuid  sequence UUID (group UUID)
-   * @param seqno sequence number or negative error code of the operation
+   * @param wsrep     this wsrep handle
+   * @param uuid      sequence UUID (group UUID)
+   * @param seqno     sequence number or negative error code of the operation
+   * @param state     initial state provided by SST donor
+   * @param state_len length of state buffer
    */
-    wsrep_status_t (*sst_received)(wsrep_t*,
+    wsrep_status_t (*sst_received)(wsrep_t*            wsrep,
                                    const wsrep_uuid_t* uuid,
-                                   wsrep_seqno_t       seqno);
+                                   wsrep_seqno_t       seqno,
+                                   const char*         state,
+                                   size_t              state_len);
+
+
+  /*!
+   * @brief Generate request for consistent snapshot. 
+   *
+   * If successfull, this call will generate internally SST request
+   * which in turn triggers calling SST donate callback on the nodes
+   * specified in donor_spec. If donor_spec is null, callback is 
+   * called only locally. This call will block until sst_sent is called
+   * from callback.
+   * 
+   *
+   * @param wsrep   this wsrep handle
+   * @param msg     context message for SST donate callback
+   * @param msg_len length of context message
+   * @param donor_spec list of snapshot donors
+   */
+    wsrep_status_t (*snapshot)(wsrep_t*    wsrep, 
+                               const void* msg, 
+                               size_t      msg_len, 
+                               const char* donor_spec);
 
   /*!
    * @brief Returns an array fo status variables.
@@ -643,14 +682,14 @@ struct wsrep_ {
    * @param wsrep this wsrep handle
    * @return array of struct wsrep_status_var
    */
-    struct wsrep_status_var* (*status_get) (wsrep_t*);
+    struct wsrep_status_var* (*status_get) (wsrep_t* wsrep);
 
   /*!
    * @brief Release resources that might be associated with the array
    *
    * @param wsrep this wsrep handle
    */
-    void (*status_free) (wsrep_t*, struct wsrep_status_var* var_array);
+    void (*status_free) (wsrep_t* wsrep, struct wsrep_status_var* var_array);
 
   /*!
    * wsrep provider name
@@ -671,7 +710,7 @@ struct wsrep_ {
    * @brief Frees allocated resources before unloading the library.
    * @param wsrep this wsrep handle
    */
-    void (*free)(wsrep_t*);
+    void (*free)(wsrep_t* wsrep);
 
     void *dlh;    //!< reserved for future use
     void *ctx;    //!< reserved for implemetation private context
