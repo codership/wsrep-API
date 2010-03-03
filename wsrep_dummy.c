@@ -1,4 +1,4 @@
-/* Copyright (C) 2009 Codership Oy <info@codersihp.com>
+/* Copyright (C) 2009-2010 Codership Oy <info@codersihp.com>
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -51,8 +51,9 @@ static wsrep_status_t dummy_init (wsrep_t* w,
     return WSREP_OK;
 }
 
-static wsrep_status_t dummy_options_set (wsrep_t* w,
-                                       const char* conf __attribute__((unused)))
+static wsrep_status_t dummy_options_set(
+    wsrep_t* w,
+    const char* conf __attribute__((unused)))
 {
     WSREP_DBUG_ENTER(w);
     return WSREP_OK;
@@ -64,26 +65,23 @@ static char* dummy_options_get (wsrep_t* w)
     return NULL;
 }
 
-static wsrep_status_t dummy_connect(wsrep_t* w,
-                                    const char* name  __attribute__((unused)),
-                                    const char* url   __attribute__((unused)),
-                                    const char* donor __attribute__((unused)))
-{
-    WSREP_DBUG_ENTER(w);
-    return WSREP_OK;
-}
-
-static wsrep_status_t dummy_disconnect(
+static wsrep_status_t dummy_connect(
     wsrep_t* w,
-    wsrep_uuid_t*  uuid  __attribute__((unused)),
-    wsrep_seqno_t* seqno __attribute__((unused))
-)
+    const char* name  __attribute__((unused)),
+    const char* url   __attribute__((unused)),
+    const char* donor __attribute__((unused)))
 {
     WSREP_DBUG_ENTER(w);
     return WSREP_OK;
 }
 
-static wsrep_status_t dummy_recv(wsrep_t* w, void *ctx __attribute__((unused)))
+static wsrep_status_t dummy_disconnect(wsrep_t* w)
+{
+    WSREP_DBUG_ENTER(w);
+    return WSREP_OK;
+}
+
+static wsrep_status_t dummy_recv(wsrep_t* w)
 {
     WSREP_DBUG_ENTER(w);
     return WSREP_OK;
@@ -119,8 +117,7 @@ static wsrep_status_t dummy_post_rollback(
 
 static wsrep_status_t dummy_replay_trx(
     wsrep_t* w, 
-    const wsrep_trx_id_t  trx_id  __attribute__((unused)), 
-    void*                 app_ctx __attribute__((unused)))
+    const wsrep_trx_id_t  trx_id  __attribute__((unused)))
 {
     WSREP_DBUG_ENTER(w);
     return WSREP_OK;
@@ -168,6 +165,13 @@ static wsrep_status_t dummy_append_row_key(
     return WSREP_OK;
 }
 
+static wsrep_status_t dummy_causal_read(
+    wsrep_t* w,
+    wsrep_seqno_t* seqno __attribute__((unused)))
+{
+    WSREP_DBUG_ENTER(w);
+    return WSREP_OK;
+}
 
 static wsrep_status_t dummy_set_variable(
     wsrep_t* w, 
@@ -221,14 +225,28 @@ static wsrep_status_t dummy_sst_sent(
 
 static wsrep_status_t dummy_sst_received(
     wsrep_t* w,
-    const wsrep_uuid_t* uuid  __attribute__((unused)),
-    wsrep_seqno_t       seqno __attribute__((unused)))
+    const wsrep_uuid_t* uuid      __attribute__((unused)),
+    const wsrep_seqno_t seqno     __attribute__((unused)),
+    const char*         state     __attribute__((unused)),
+    const size_t        state_len __attribute__((unused)))
 {
     WSREP_DBUG_ENTER(w);
     return WSREP_OK;
 }
 
-static struct wsrep_status_var dummy_status = { NULL, 0, { 0 } };
+static wsrep_status_t dummy_snapshot(
+    wsrep_t* w,
+    const void*  msg        __attribute__((unused)),
+    const size_t msg_len    __attribute__((unused)),
+    const char*  donor_spec __attribute__((unused)))
+{
+    WSREP_DBUG_ENTER(w);
+    return WSREP_OK;
+}
+
+static struct wsrep_status_var dummy_status = { 
+    NULL, WSREP_STATUS_STRING, { 0 } 
+};
 
 static struct wsrep_status_var* dummy_status_get (wsrep_t* w)
 {
@@ -238,8 +256,7 @@ static struct wsrep_status_var* dummy_status_get (wsrep_t* w)
 
 void dummy_status_free (
     wsrep_t* w,
-    struct wsrep_status_var* status __attribute__((unused))
-    )
+    struct wsrep_status_var* status __attribute__((unused)))
 {
     WSREP_DBUG_ENTER(w);
 }
@@ -260,12 +277,14 @@ static wsrep_t dummy_iface = {
     &dummy_abort_slave_trx,
     &dummy_append_query,
     &dummy_append_row_key,
+    &dummy_causal_read,
     &dummy_set_variable,
     &dummy_set_database,
     &dummy_to_execute_start,
     &dummy_to_execute_end,
     &dummy_sst_sent,
     &dummy_sst_received,
+    &dummy_snapshot,
     &dummy_status_get,
     &dummy_status_free,
     WSREP_NONE,
