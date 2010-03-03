@@ -290,7 +290,8 @@ typedef void (*wsrep_synced_cb_t)(void* ctx);
  */
 struct wsrep_init_args
 {
-    void* app_ctx;             //!< Application context to be passed for callbacks
+    void* app_ctx;             //!< Application context for callbacks
+
     /* Configuration parameters */
     const char* node_name;     //!< Symbolic name of this node (e.g. hostname)
     const char* node_incoming; //!< Address for incoming client connections
@@ -405,8 +406,9 @@ struct wsrep_ {
    * This function never returns
    *
    * @param wsrep this wsrep handle
+   * @param recv_ctx receiver context
    */
-    wsrep_status_t (*recv)(wsrep_t* wsrep);
+    wsrep_status_t (*recv)(wsrep_t* wsrep, void* recv_ctx);
 
   /*!
    * @brief Replicates/logs result of transaction to other nodes and allocates
@@ -466,7 +468,7 @@ struct wsrep_ {
    *
    * @param wsrep this wsrep handle
    * @param trx_id transaction which is committing
-   * @param app_ctx
+   * @param trx_ctx transaction context
    *
    * @retval WSREP_OK         cluster commit succeeded
    * @retval WSREP_TRX_FAIL   must rollback transaction
@@ -476,7 +478,8 @@ struct wsrep_ {
    * @retval WSREP_NODE_FAIL  must close all connections and reinit
    */
     wsrep_status_t (*replay_trx)(wsrep_t*       wsrep,
-                                 wsrep_trx_id_t trx_id);
+                                 wsrep_trx_id_t trx_id,
+                                 void*          trx_ctx);
 
   /*!
    * @brief Abort pre_commit() call of another thread.

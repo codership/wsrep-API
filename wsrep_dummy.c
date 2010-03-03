@@ -81,7 +81,8 @@ static wsrep_status_t dummy_disconnect(wsrep_t* w)
     return WSREP_OK;
 }
 
-static wsrep_status_t dummy_recv(wsrep_t* w)
+static wsrep_status_t dummy_recv(wsrep_t* w, 
+                                 void* recv_ctx __attribute__((unused)))
 {
     WSREP_DBUG_ENTER(w);
     return WSREP_OK;
@@ -117,7 +118,8 @@ static wsrep_status_t dummy_post_rollback(
 
 static wsrep_status_t dummy_replay_trx(
     wsrep_t* w, 
-    const wsrep_trx_id_t  trx_id  __attribute__((unused)))
+    const wsrep_trx_id_t  trx_id  __attribute__((unused)),
+    void*                 trx_ctx __attribute__((unused)))
 {
     WSREP_DBUG_ENTER(w);
     return WSREP_OK;
