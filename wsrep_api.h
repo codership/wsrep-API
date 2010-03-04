@@ -179,14 +179,16 @@ typedef struct wsrep_view_info {
  *       malloc()/calloc()/realloc() and it will be freed by
  *       wsrep implementation.
  *
- * @param ctx         application context
+ * @param app_ctx     application context
+ * @param recv_ctx    receiver context
  * @param view        new view on the group
  * @param state       current state
  * @param state_len   lenght of current state
  * @param sst_req     location to store SST request
  * @param sst_req_len location to store SST request length or error code
  */
-typedef void (*wsrep_view_cb_t) (void*              ctx,
+typedef void (*wsrep_view_cb_t) (void*              app_ctx,
+                                 void*              recv_ctx,
                                  wsrep_view_info_t* view,
                                  const char*        state,
                                  size_t             state_len,
@@ -233,9 +235,9 @@ typedef struct wsrep_apply_data {
  * This handler is called from wsrep library to execute
  * the passed SQL statement in brute force.
  *
- * @param ctx   context pointer provided by the application
- * @param data  the apply data buffer to be applied
- * @param seqno global seqno part of the action to be applied
+ * @param recv_ctx receiver context pointer provided by the application
+ * @param data     the apply data buffer to be applied
+ * @param seqno    global seqno part of the action to be applied
  *
  * @return success code:
  * @retval WSREP_OK
@@ -244,7 +246,7 @@ typedef struct wsrep_apply_data {
  * @retval WSREP_ERRROR dbms failed to apply the write set
  *
  */
-typedef enum wsrep_status (*wsrep_bf_apply_cb_t)(void*               ctx,
+typedef enum wsrep_status (*wsrep_bf_apply_cb_t)(void*               recv_ctx,
                                                  wsrep_apply_data_t* data,
                                                  wsrep_seqno_t       seqno);
 
@@ -265,7 +267,7 @@ typedef enum wsrep_status (*wsrep_bf_apply_cb_t)(void*               ctx,
  * @param state_len current wsrep internal state buffer len
  * @return 0 for success or negative error code
  */
-typedef int (*wsrep_sst_donate_cb_t) (void* ctx,
+typedef int (*wsrep_sst_donate_cb_t) (void*               app_ctx,
                                       const void*         msg,
                                       size_t              msg_len,
                                       const wsrep_uuid_t* uuid,
@@ -282,7 +284,7 @@ typedef int (*wsrep_sst_donate_cb_t) (void* ctx,
  *
  * @param ctx application context
  */
-typedef void (*wsrep_synced_cb_t)(void* ctx);
+typedef void (*wsrep_synced_cb_t)(void* app_ctx);
 
 
 /*!
