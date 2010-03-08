@@ -259,6 +259,8 @@ typedef enum wsrep_status (*wsrep_bf_apply_cb_t)(void*               recv_ctx,
  * Wsrep implementation may provide internal state to be transmitted
  * to new cluster member for initial state.
  *
+ * @param app_ctx   application context
+ * @param recv_ctx  receiver context
  * @param msg       state transfer request message
  * @param msg_len   state transfer request message length
  * @param uuid      current state uuid on this node
@@ -268,6 +270,7 @@ typedef enum wsrep_status (*wsrep_bf_apply_cb_t)(void*               recv_ctx,
  * @return 0 for success or negative error code
  */
 typedef int (*wsrep_sst_donate_cb_t) (void*               app_ctx,
+                                      void*               recv_ctx,
                                       const void*         msg,
                                       size_t              msg_len,
                                       const wsrep_uuid_t* uuid,
@@ -282,7 +285,7 @@ typedef int (*wsrep_sst_donate_cb_t) (void*               app_ctx,
  * This callback is called after wsrep library has got in sync with
  * rest of the cluster.
  *
- * @param ctx application context
+ * @param app_ctx application context
  */
 typedef void (*wsrep_synced_cb_t)(void* app_ctx);
 
