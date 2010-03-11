@@ -31,8 +31,10 @@ typedef struct wsrep_dummy
 
 /* Trace function usage a-la DBUG */
 #define WSREP_DBUG_ENTER(_w) do {                                       \
-        if (WSREP_DUMMY(_w)->log_fn)                                    \
-            WSREP_DUMMY(_w)->log_fn(WSREP_LOG_DEBUG, __FUNCTION__);     \
+        if (WSREP_DUMMY(_w)) {                                          \
+            if (WSREP_DUMMY(_w)->log_fn)                                \
+                WSREP_DUMMY(_w)->log_fn(WSREP_LOG_DEBUG, __FUNCTION__); \
+        }                                                               \
     } while (0)
 
 
