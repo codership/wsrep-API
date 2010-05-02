@@ -92,11 +92,11 @@ static wsrep_status_t dummy_recv(wsrep_t* w,
 
 static wsrep_status_t dummy_pre_commit(
     wsrep_t* w, 
-    const wsrep_trx_id_t   trx_id    __attribute__((unused)), 
-    const wsrep_conn_id_t  conn_id   __attribute__((unused)), 
-    const void*            query     __attribute__((unused)), 
-    const size_t           query_len __attribute__((unused)),
-    wsrep_seqno_t*         seqno     __attribute__((unused)))
+    const wsrep_conn_id_t  conn_id    __attribute__((unused)), 
+    wsrep_trx_handle_t*    trx_handle __attribute__((unused)), 
+    const void*            query      __attribute__((unused)), 
+    const size_t           query_len  __attribute__((unused)),
+    wsrep_seqno_t*         seqno      __attribute__((unused)))
 {
     WSREP_DBUG_ENTER(w);
     return WSREP_OK;
@@ -104,7 +104,7 @@ static wsrep_status_t dummy_pre_commit(
 
 static wsrep_status_t dummy_post_commit(
     wsrep_t* w,
-    const wsrep_trx_id_t trx_id __attribute__((unused)))
+    wsrep_trx_handle_t* trx_handle __attribute__((unused)))
 {
     WSREP_DBUG_ENTER(w);
     return WSREP_OK;
@@ -112,7 +112,7 @@ static wsrep_status_t dummy_post_commit(
 
 static wsrep_status_t dummy_post_rollback(
     wsrep_t* w, 
-    const wsrep_trx_id_t trx_id __attribute__((unused)))
+    wsrep_trx_handle_t* trx_handle __attribute__((unused)))
 {
     WSREP_DBUG_ENTER(w);
     return WSREP_OK;
@@ -120,8 +120,8 @@ static wsrep_status_t dummy_post_rollback(
 
 static wsrep_status_t dummy_replay_trx(
     wsrep_t* w, 
-    const wsrep_trx_id_t  trx_id  __attribute__((unused)),
-    void*                 trx_ctx __attribute__((unused)))
+    wsrep_trx_handle_t* trx_handle __attribute__((unused)),
+    void*               trx_ctx    __attribute__((unused)))
 {
     WSREP_DBUG_ENTER(w);
     return WSREP_OK;
@@ -147,10 +147,10 @@ static wsrep_status_t dummy_abort_slave_trx(
 
 static wsrep_status_t dummy_append_query(
     wsrep_t* w, 
-    const wsrep_trx_id_t  trx_id   __attribute__((unused)), 
-    const char*           query    __attribute__((unused)), 
-    const time_t          timeval  __attribute__((unused)),
-    const uint32_t  randseed __attribute__((unused)))
+    wsrep_trx_handle_t* trx_handle __attribute__((unused)), 
+    const char*         query      __attribute__((unused)), 
+    const time_t        timeval    __attribute__((unused)),
+    const uint32_t      randseed   __attribute__((unused)))
 {
     WSREP_DBUG_ENTER(w);
     return WSREP_OK;
@@ -158,7 +158,7 @@ static wsrep_status_t dummy_append_query(
 
 static wsrep_status_t dummy_append_row_key(
     wsrep_t* w, 
-    const wsrep_trx_id_t trx_id      __attribute__((unused)), 
+    wsrep_trx_handle_t*  trx_handle  __attribute__((unused)), 
     const char*          dbtable     __attribute__((unused)),
     const size_t         dbtable_len __attribute__((unused)),
     const char*          key         __attribute__((unused)), 
