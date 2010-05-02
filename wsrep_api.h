@@ -352,6 +352,20 @@ struct wsrep_trx_handle_
 
 typedef struct wsrep_trx_handle_ wsrep_trx_handle_t;
 
+/*! 
+ * @brief Helper method to reset trx handle state when trx id changes 
+ */
+static inline wsrep_trx_handle_t* wsrep_trx_handle_for_id(
+    wsrep_trx_handle_t* trx_handle, wsrep_trx_id_t trx_id)
+{
+    if (trx_handle->trx_id != trx_id)
+    {
+        trx_handle->trx_id = trx_id;
+        trx_handle->opaque = NULL;
+    }
+    return trx_handle;
+}
+
 
 typedef struct wsrep_ wsrep_t;
 /*!
