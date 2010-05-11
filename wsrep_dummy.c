@@ -169,6 +169,16 @@ static wsrep_status_t dummy_append_row_key(
     return WSREP_OK;
 }
 
+static wsrep_status_t dummy_append_data(
+    wsrep_t* w,
+    wsrep_trx_handle_t* trx_handle __attribute__((unused)),
+    const void*         data       __attribute__((unused)),
+    size_t              data_len   __attribute__((unused)))
+{
+    WSREP_DBUG_ENTER(w);
+    return WSREP_OK;
+}
+
 static wsrep_status_t dummy_causal_read(
     wsrep_t* w,
     wsrep_seqno_t* seqno __attribute__((unused)))
@@ -281,6 +291,7 @@ static wsrep_t dummy_iface = {
     &dummy_abort_slave_trx,
     &dummy_append_query,
     &dummy_append_row_key,
+    &dummy_append_data,
     &dummy_causal_read,
     &dummy_set_variable,
     &dummy_set_database,
