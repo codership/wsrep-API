@@ -43,9 +43,9 @@ static int verify(const wsrep_t *wh, const char *iface_ver)
     char msg[msg_len];
 
 #define VERIFY(_p) if (!(_p)) {                                       \
-	snprintf(msg, msg_len, "wsrep_load(): verify(): %s\n", # _p); \
+        snprintf(msg, msg_len, "wsrep_load(): verify(): %s\n", # _p); \
         logger (WSREP_LOG_ERROR, msg);                                \
-	return EINVAL;						      \
+        return EINVAL;                                                \
     }
 
     VERIFY(wh);
@@ -53,7 +53,7 @@ static int verify(const wsrep_t *wh, const char *iface_ver)
 
     if (strcmp(wh->version, iface_ver)) {
         snprintf (msg, msg_len,
-                  "WSREP interface version mismatch: required '%s', found '%s'",
+                  "provider interface version mismatch: need '%s', found '%s'",
                   iface_ver, wh->version);
         logger (WSREP_LOG_ERROR, msg);
         return EINVAL;
@@ -92,8 +92,8 @@ static int verify(const wsrep_t *wh, const char *iface_ver)
 static wsrep_loader_fun wsrep_dlf(void *dlh, const char *sym)
 {
     union {
-	wsrep_loader_fun dlfun;
-	void *obj;
+        wsrep_loader_fun dlfun;
+        void *obj;
     } alias;
     alias.obj = dlsym(dlh, sym);
     return alias.dlfun;
@@ -111,53 +111,53 @@ int wsrep_load(const char *spec, wsrep_t **hptr, wsrep_log_cb_t log_cb)
 
     if (NULL != log_cb)
         logger = log_cb;
-    
+
     if (!(spec && hptr))
         return EINVAL;
-    
+
     snprintf (msg, msg_len,
               "wsrep_load(): loading provider library '%s'", spec);
     logger (WSREP_LOG_INFO, msg);
-    
+
     if (!(*hptr = malloc(sizeof(wsrep_t)))) {
-	logger (WSREP_LOG_FATAL, "wsrep_load(): out of memory");
+        logger (WSREP_LOG_FATAL, "wsrep_load(): out of memory");
         return ENOMEM;
     }
 
     if (!spec || strcmp(spec, WSREP_NONE) == 0) {
         if ((ret = wsrep_dummy_loader(*hptr)) != 0) {
-	    free (*hptr);
+            free (*hptr);
             *hptr = NULL;
         }
-	return ret;
+        return ret;
     }
-    
+
     if (!(dlh = dlopen(spec, RTLD_NOW | RTLD_LOCAL))) {
-	snprintf(msg, msg_len, "wsrep_load(): dlopen(): %s", dlerror());
+        snprintf(msg, msg_len, "wsrep_load(): dlopen(): %s", dlerror());
         logger (WSREP_LOG_ERROR, msg);
         ret = EINVAL;
-	goto out;
+        goto out;
     }
-    
+
     if (!(dlfun = wsrep_dlf(dlh, "wsrep_loader"))) {
         ret = EINVAL;
-	goto out;
+        goto out;
     }
-    
+
     if ((ret = (*dlfun)(*hptr)) != 0) {
         snprintf(msg, msg_len, "wsrep_load(): loader failed: %s",
                  strerror(ret));
         logger (WSREP_LOG_ERROR, msg);
         goto out;
     }
-    
+
     if ((ret = verify(*hptr, WSREP_INTERFACE_VERSION)) != 0 &&
         (*hptr)->free) {
-	logger (WSREP_LOG_ERROR, "wsrep_load(): interface version mismatch.");
+        logger (WSREP_LOG_ERROR, "wsrep_load(): interface version mismatch.");
         (*hptr)->free(*hptr);
         goto out;
     }
-    
+
     (*hptr)->dlh = dlh;
 
 out:

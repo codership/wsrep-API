@@ -59,7 +59,7 @@ wsrep_uuid_scan (const char* str, size_t str_len, wsrep_uuid_t* uuid)
 /*!
  * Write UUID to string
  * @return length of UUID string representation or -EMSGSIZE if string is too
- *         short 
+ *         short
  */
 ssize_t
 wsrep_uuid_print (const wsrep_uuid_t* uuid, char* str, size_t str_len)
