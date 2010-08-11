@@ -258,19 +258,19 @@ static wsrep_status_t dummy_snapshot(
     return WSREP_OK;
 }
 
-static struct wsrep_status_var dummy_status = {
-    NULL, WSREP_STATUS_STRING, { 0 }
+static struct wsrep_stats_var dummy_stats[] = {
+    { NULL, WSREP_VAR_STRING, { 0 } }
 };
 
-static struct wsrep_status_var* dummy_status_get (wsrep_t* w)
+static struct wsrep_stats_var* dummy_stats_get (wsrep_t* w)
 {
     WSREP_DBUG_ENTER(w);
-    return &dummy_status;
+    return dummy_stats;
 }
 
-void dummy_status_free (
+void dummy_stats_free (
     wsrep_t* w,
-    struct wsrep_status_var* status __attribute__((unused)))
+    struct wsrep_stats_var* stats __attribute__((unused)))
 {
     WSREP_DBUG_ENTER(w);
 }
@@ -300,8 +300,8 @@ static wsrep_t dummy_iface = {
     &dummy_sst_sent,
     &dummy_sst_received,
     &dummy_snapshot,
-    &dummy_status_get,
-    &dummy_status_free,
+    &dummy_stats_get,
+    &dummy_stats_free,
     WSREP_NONE,
     WSREP_INTERFACE_VERSION,
     "Codership Oy <info@codership.com>",
