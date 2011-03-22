@@ -36,12 +36,17 @@ extern "C" {
 /*!
  *  Certain provider capabilities application may need to know
  */
-#define WSREP_CAP_CAUSAL_READS          (1ULL<<01)
-#define WSREP_CAP_CAUSAL_READS_TRX      (1ULL<<02)
-#define WSREP_CAP_WRITE_SET_INCREMENTAL (1ULL<<03)
-#define WSREP_CAP_WRITE_SET_MIXED       (1ULL<<04)
-#define WSREP_CAP_LOCKING_FUNCTIONS     (1ULL<<05)
-#define WSREP_CAP_SESSION_LOCKS         (1ULL<<06)
+#define WSREP_CAP_MULTI_MASTER          ( 1ULL << 0 )
+#define WSREP_CAP_CERTIFICATION         ( 1ULL << 1 )
+#define WSREP_CAP_PARALLEL_APPLYING     ( 1ULL << 2 )
+#define WSREP_CAP_TRX_REPLAY            ( 1ULL << 3 )
+#define WSREP_CAP_ISOLATION             ( 1ULL << 4 )
+#define WSREP_CAP_CAUSAL_READS          ( 1ULL << 5 )
+#define WSREP_CAP_CAUSAL_TRX            ( 1ULL << 6 )
+#define WSREP_CAP_WRITE_SET_INCREMENTS  ( 1ULL << 7 )
+#define WSREP_CAP_SESSION_LOCKS         ( 1ULL << 8 )
+#define WSREP_CAP_DISTRIBUTED_LOCKS     ( 1ULL << 9 )
+#define WSREP_CAP_CONSISTENCY_CHECK     ( 1ULL << 10 )
 
 /* Empty backend spec */
 #define WSREP_NONE "none"
