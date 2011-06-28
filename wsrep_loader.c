@@ -70,11 +70,9 @@ static int verify(const wsrep_t *wh, const char *iface_ver)
     VERIFY(wh->post_rollback);
     VERIFY(wh->replay_trx);
     VERIFY(wh->abort_pre_commit);
-    VERIFY(wh->abort_slave_trx);
     VERIFY(wh->append_query);
     VERIFY(wh->append_key);
-    VERIFY(wh->set_variable);
-    VERIFY(wh->set_database);
+    VERIFY(wh->free_connection);
     VERIFY(wh->to_execute_start);
     VERIFY(wh->to_execute_end);
     VERIFY(wh->sst_sent);
@@ -83,6 +81,8 @@ static int verify(const wsrep_t *wh, const char *iface_ver)
     VERIFY(wh->stats_free);
     VERIFY(wh->pause);
     VERIFY(wh->resume);
+    VERIFY(wh->desync);
+    VERIFY(wh->resync);
     VERIFY(wh->provider_name);
     VERIFY(wh->provider_version);
     VERIFY(wh->provider_vendor);
