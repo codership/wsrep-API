@@ -72,7 +72,7 @@ static int verify(const wsrep_t *wh, const char *iface_ver)
     VERIFY(wh->abort_pre_commit);
     VERIFY(wh->abort_slave_trx);
     VERIFY(wh->append_query);
-    VERIFY(wh->append_row_key);
+    VERIFY(wh->append_key);
     VERIFY(wh->set_variable);
     VERIFY(wh->set_database);
     VERIFY(wh->to_execute_start);
