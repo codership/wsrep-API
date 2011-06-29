@@ -71,7 +71,7 @@ static int verify(const wsrep_t *wh, const char *iface_ver)
     VERIFY(wh->replay_trx);
     VERIFY(wh->abort_pre_commit);
     VERIFY(wh->append_query);
-    VERIFY(wh->append_row_key);
+    VERIFY(wh->append_key);
     VERIFY(wh->free_connection);
     VERIFY(wh->to_execute_start);
     VERIFY(wh->to_execute_end);
@@ -154,14 +154,12 @@ int wsrep_load(const char *spec, wsrep_t **hptr, wsrep_log_cb_t log_cb)
         goto out;
     }
 
-    if ((ret = verify(*hptr, WSREP_INTERFACE_VERSION)) != 0 &&
-        (*hptr)->free) {
+    if ((ret = verify(*hptr, WSREP_INTERFACE_VERSION)) != 0) {
         snprintf (msg, msg_len,
                   "wsrep_load(): interface version mismatch: my version %s, "
                   "provider version %s", WSREP_INTERFACE_VERSION,
                   (*hptr)->version);
         logger (WSREP_LOG_ERROR, msg);
-        (*hptr)->free(*hptr);
         goto out;
     }
 

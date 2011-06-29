@@ -155,9 +155,7 @@ static wsrep_status_t dummy_append_query(
 static wsrep_status_t dummy_append_row_key(
     wsrep_t* w,
     wsrep_trx_handle_t*  trx_handle  __attribute__((unused)),
-    const char*          dbtable     __attribute__((unused)),
-    const size_t         dbtable_len __attribute__((unused)),
-    const char*          key         __attribute__((unused)),
+    const wsrep_key_t*   key         __attribute__((unused)),
     const size_t         key_len     __attribute__((unused)),
     const wsrep_action_t action      __attribute__((unused)))
 {
@@ -194,6 +192,8 @@ static wsrep_status_t dummy_free_connection(
 static wsrep_status_t dummy_to_execute_start(
     wsrep_t* w,
     const wsrep_conn_id_t  conn_id   __attribute__((unused)),
+    const wsrep_key_t*     key       __attribute__((unused)),
+    const size_t           key_len   __attribute__((unused)),
     const void*            query     __attribute__((unused)),
     const size_t           query_len __attribute__((unused)),
     wsrep_seqno_t*         seqno     __attribute__((unused)))
