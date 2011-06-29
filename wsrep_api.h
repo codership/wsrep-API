@@ -361,7 +361,7 @@ struct wsrep_stats_var
     } value;                   //!< variable value
 };
 
-
+/*! Key struct used to pass certification keys for transaction handling calls */
 typedef struct wsrep_key_
 {
     const void* key;
@@ -589,10 +589,8 @@ struct wsrep_ {
    *
    * @param wsrep       this wsrep handle
    * @param trx_handle  transaction handle
-   * @param dbtable     unique name of the table "db.table"
-   * @param dbtable_len length of table name (does not end with 0)
-   * @param key         binary key data
-   * @param key_len     length of the key data
+   * @param key         array of key parts
+   * @param key_len     length of the array of key parts
    * @param action      action code according to enum wsrep_action
    */
     wsrep_status_t (*append_key)(wsrep_t*            wsrep,
@@ -656,6 +654,8 @@ struct wsrep_ {
    *
    * @param wsrep       this wsrep handle
    * @param conn_id     connection ID
+   * @param key         array of key parts
+   * @param key_len     lenght of the array of key parts
    * @param query       query to be executed
    * @param query_len   length of the query string
    * @param seqno       seqno part of the action ID

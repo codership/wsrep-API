@@ -154,14 +154,12 @@ int wsrep_load(const char *spec, wsrep_t **hptr, wsrep_log_cb_t log_cb)
         goto out;
     }
 
-    if ((ret = verify(*hptr, WSREP_INTERFACE_VERSION)) != 0 &&
-        (*hptr)->free) {
+    if ((ret = verify(*hptr, WSREP_INTERFACE_VERSION)) != 0) {
         snprintf (msg, msg_len,
                   "wsrep_load(): interface version mismatch: my version %s, "
                   "provider version %s", WSREP_INTERFACE_VERSION,
                   (*hptr)->version);
         logger (WSREP_LOG_ERROR, msg);
-        (*hptr)->free(*hptr);
         goto out;
     }
 
