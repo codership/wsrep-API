@@ -31,7 +31,7 @@ extern "C" {
  *  wsrep replication API
  */
 
-#define WSREP_INTERFACE_VERSION "22"
+#define WSREP_INTERFACE_VERSION "23"
 
 /*!
  *  Certain provider capabilities application may need to know
