@@ -175,7 +175,7 @@ out:
         *hptr = NULL;
     } else {
         snprintf (msg, msg_len,
-                  "wsrep_load(): %s %s by %s loaded succesfully.",
+                  "wsrep_load(): %s %s by %s loaded successfully.",
                   (*hptr)->provider_name, (*hptr)->provider_version,
                   (*hptr)->provider_vendor);
         logger (WSREP_LOG_INFO, msg);
