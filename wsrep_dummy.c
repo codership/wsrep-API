@@ -284,6 +284,7 @@ static wsrep_status_t dummy_resync (wsrep_t* w)
 
 static wsrep_status_t dummy_lock (wsrep_t* w,
                                   const char* s __attribute__((unused)),
+                                  bool        r __attribute__((unused)),
                                   int64_t     o __attribute__((unused)),
                                   int64_t     t __attribute__((unused)))
 {

@@ -31,7 +31,7 @@ extern "C" {
  *  wsrep replication API
  */
 
-#define WSREP_INTERFACE_VERSION "23"
+#define WSREP_INTERFACE_VERSION "24dev"
 
 /*!
  *  Certain provider capabilities application may need to know
@@ -48,6 +48,7 @@ extern "C" {
 #define WSREP_CAP_SESSION_LOCKS         ( 1ULL << 9 )
 #define WSREP_CAP_DISTRIBUTED_LOCKS     ( 1ULL << 10 )
 #define WSREP_CAP_CONSISTENCY_CHECK     ( 1ULL << 11 )
+#define WSREP_CAP_ENCAPSULATION         ( 1ULL << 12 )
 
 /*!
  *  Write set replication flags
@@ -66,8 +67,8 @@ typedef int64_t  wsrep_seqno_t;   //!< sequence number of a writeset, etc.
 
 /*! wsrep status codes */
 typedef enum wsrep_status {
-    WSREP_OK        = 0,   //!< success
-    WSREP_APPLIER_CLOSING, //!< success, applier marked to terminate
+    WSREP_OK = 0,          //!< success
+    WSREP_APPLIER_EXIT,    //!< success, applier marked to terminate
     WSREP_WARNING,         //!< minor warning, error logged
     WSREP_TRX_MISSING,     //!< transaction is not known by wsrep
     WSREP_TRX_FAIL,        //!< transaction aborted, server can continue
@@ -381,7 +382,7 @@ typedef struct wsrep_trx_handle_
 /*!
  * @brief Helper method to reset trx handle state when trx id changes
  *
- * Instead of passing wsrep_trx_handle_t directly for wsrep calls,
+ * Instead of passing wsrep_trx_handle_t directly to wsrep calls,
  * wrapping handle with this call offloads bookkeeping from
  * application.
  */
@@ -787,17 +788,18 @@ struct wsrep_ {
   /*!
    * @brief Acquire global named lock
    *
-   * @param wsrep wsrep provider handle
-   * @param name  lock name
-   * @param owner 64-bit owner ID
-   * @param tout  timeout in nanoseconds.
-   *              0 - return immediately, -1 wait forever.
+   * @param wsrep  wsrep provider handle
+   * @param name   lock name
+   * @param shared shared or exclusive lock
+   * @param owner  64-bit owner ID
+   * @param tout   timeout in nanoseconds.
+   *               0 - return immediately, -1 wait forever.
    * @return wsrep status or negative error code
    * @retval -EDEADLK lock was already acquired by this thread
    * @retval -EBUSY   lock was busy
    */
-    wsrep_status_t (*lock) (wsrep_t* wsrep, const char* name, int64_t owner,
-                            int64_t tout);
+    wsrep_status_t (*lock) (wsrep_t* wsrep, const char* name, bool shared,
+                            int64_t owner, int64_t tout);
 
   /*!
    * @brief Release global named lock
