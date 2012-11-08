@@ -73,6 +73,7 @@ typedef enum wsrep_status {
     WSREP_TRX_MISSING,     //!< transaction is not known by wsrep
     WSREP_TRX_FAIL,        //!< transaction aborted, server can continue
     WSREP_BF_ABORT,        //!< trx was victim of brute force abort
+    WSREP_SIZE_EXCEEDED,   //!< data exceeded maximum supported size
     WSREP_CONN_FAIL,       //!< error in client connection, must abort
     WSREP_NODE_FAIL,       //!< error in node state, wsrep must reinit
     WSREP_FATAL,           //!< fatal error, server must abort
