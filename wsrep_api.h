@@ -18,7 +18,6 @@
 #define WSREP_H
 
 #include <stdint.h>
-#include <stdbool.h>
 #include <stdlib.h>
 #include <unistd.h>
 #include <time.h>
@@ -34,7 +33,7 @@ extern "C" {
 #define WSREP_INTERFACE_VERSION "24dev"
 
 /*!
- *  Certain provider capabilities application may need to know
+ *  Certain provider capabilities application may need to know about
  */
 #define WSREP_CAP_MULTI_MASTER          ( 1ULL << 0 )
 #define WSREP_CAP_CERTIFICATION         ( 1ULL << 1 )
@@ -61,6 +60,7 @@ extern "C" {
 typedef uint64_t wsrep_trx_id_t;  //!< application transaction ID
 typedef uint64_t wsrep_conn_id_t; //!< application connection ID
 typedef int64_t  wsrep_seqno_t;   //!< sequence number of a writeset, etc.
+typedef _Bool    wsrep_bool_t;    //!< should be the same as standard bool
 
 /*! undefined seqno */
 #define WSREP_SEQNO_UNDEFINED (-1)
@@ -170,7 +170,7 @@ typedef struct wsrep_view_info {
     wsrep_seqno_t       seqno;     //!< global state seqno
     wsrep_seqno_t       view;      //!< global view number
     wsrep_view_status_t status;    //!< view status
-    bool                state_gap; //!< gap between global and local states
+    wsrep_bool_t        state_gap; //!< gap between global and local states
     int                 my_idx;    //!< index of this member in the view
     int                 memb_num;  //!< number of members in the view
     int                 proto_ver; //!< application protocol agreed on in the view
@@ -258,7 +258,7 @@ typedef enum wsrep_status (*wsrep_apply_cb_t)   (void*               recv_ctx,
  */
 typedef enum wsrep_status (*wsrep_commit_cb_t)  (void*         recv_ctx,
                                                  wsrep_seqno_t seqno,
-                                                 bool          commit);
+                                                 wsrep_bool_t  commit);
 
 /*!
  * @brief a callback to donate state snapshot
@@ -288,7 +288,7 @@ typedef int (*wsrep_sst_donate_cb_t) (void*               app_ctx,
                                       wsrep_seqno_t       seqno,
                                       const char*         state,
                                       size_t              state_len,
-                                      bool                bypass);
+                                      wsrep_bool_t        bypass);
 
 /*!
  * @brief a callback to signal application that wsrep state is synced
@@ -604,7 +604,7 @@ struct wsrep_ {
                                  wsrep_trx_handle_t* trx_handle,
                                  const wsrep_key_t*  key,
                                  size_t              key_len,
-                                 bool                shared);
+                                 wsrep_bool_t        shared);
    /*!
     * @brief Appends data in transaction's write set
     *
@@ -799,7 +799,8 @@ struct wsrep_ {
    * @retval -EDEADLK lock was already acquired by this thread
    * @retval -EBUSY   lock was busy
    */
-    wsrep_status_t (*lock) (wsrep_t* wsrep, const char* name, bool shared,
+    wsrep_status_t (*lock) (wsrep_t* wsrep,
+                            const char* name, wsrep_bool_t shared,
                             int64_t owner, int64_t tout);
 
   /*!
@@ -822,8 +823,8 @@ struct wsrep_ {
    * @param node  if not NULL will contain owner's node UUID
    * @return true if lock is locked
    */
-    bool (*is_locked) (wsrep_t* wsrep, const char* name, int64_t* conn,
-                       wsrep_uuid_t* node);
+    wsrep_bool_t (*is_locked) (wsrep_t* wsrep, const char* name, int64_t* conn,
+                               wsrep_uuid_t* node);
 
   /*!
    * wsrep provider name

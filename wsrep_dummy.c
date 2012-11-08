@@ -16,9 +16,10 @@
 
 /*! @file Dummy wsrep API implementation. */
 
-#include <errno.h>
-
 #include "wsrep_api.h"
+
+#include <errno.h>
+#include <stdbool.h>
 
 /*! Dummy backend context. */
 typedef struct wsrep_dummy
