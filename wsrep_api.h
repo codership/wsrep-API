@@ -604,6 +604,7 @@ struct wsrep_ {
                                  wsrep_trx_handle_t* trx_handle,
                                  const wsrep_key_t*  key,
                                  size_t              key_len,
+                                 wsrep_bool_t        nocopy,
                                  wsrep_bool_t        shared);
    /*!
     * @brief Appends data in transaction's write set
@@ -619,7 +620,8 @@ struct wsrep_ {
     wsrep_status_t (*append_data)(wsrep_t*            wsrep,
                                   wsrep_trx_handle_t* trx_handle,
                                   const void*         data,
-                                  size_t              data_len);
+                                  size_t              data_len,
+                                  wsrep_bool_t        nocopy);
 
 
   /*!
@@ -663,8 +665,8 @@ struct wsrep_ {
    * @param conn_id     connection ID
    * @param key         array of keys
    * @param key_len     lenght of the array of keys
-   * @param query       query to be executed
-   * @param query_len   length of the query string
+   * @param action      action to be executed
+   * @param action_len  action buffer size
    * @param seqno       seqno part of the action ID
    *
    * @retval WSREP_OK         cluster commit succeeded
@@ -675,8 +677,8 @@ struct wsrep_ {
                                        wsrep_conn_id_t    conn_id,
                                        const wsrep_key_t* key,
                                        size_t             key_len,
-                                       const void*        query,
-                                       size_t             query_len,
+                                       const void*        action,
+                                       size_t             action_len,
                                        wsrep_seqno_t*     seqno);
 
   /*!

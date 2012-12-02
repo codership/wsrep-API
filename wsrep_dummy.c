@@ -154,12 +154,13 @@ static wsrep_status_t dummy_append_query(
     return WSREP_OK;
 }
 
-static wsrep_status_t dummy_append_row_key(
+static wsrep_status_t dummy_append_key(
     wsrep_t* w,
-    wsrep_trx_handle_t*  trx_handle  __attribute__((unused)),
-    const wsrep_key_t*   key         __attribute__((unused)),
-    const size_t         key_len     __attribute__((unused)),
-    const bool           shared      __attribute__((unused)))
+    wsrep_trx_handle_t* trx_handle  __attribute__((unused)),
+    const wsrep_key_t*  key         __attribute__((unused)),
+    const size_t        key_len     __attribute__((unused)),
+    const bool          nocopy      __attribute__((unused)),
+    const bool          shared      __attribute__((unused)))
 {
     WSREP_DBUG_ENTER(w);
     return WSREP_OK;
@@ -169,7 +170,8 @@ static wsrep_status_t dummy_append_data(
     wsrep_t* w,
     wsrep_trx_handle_t* trx_handle __attribute__((unused)),
     const void*         data       __attribute__((unused)),
-    size_t              data_len   __attribute__((unused)))
+    const size_t        data_len   __attribute__((unused)),
+    const bool          nocopy     __attribute__((unused)))
 {
     WSREP_DBUG_ENTER(w);
     return WSREP_OK;
@@ -325,7 +327,7 @@ static wsrep_t dummy_iface = {
     &dummy_replay_trx,
     &dummy_abort_pre_commit,
     &dummy_append_query,
-    &dummy_append_row_key,
+    &dummy_append_key,
     &dummy_append_data,
     &dummy_causal_read,
     &dummy_free_connection,
