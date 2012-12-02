@@ -47,7 +47,8 @@ extern "C" {
 #define WSREP_CAP_SESSION_LOCKS         ( 1ULL << 9 )
 #define WSREP_CAP_DISTRIBUTED_LOCKS     ( 1ULL << 10 )
 #define WSREP_CAP_CONSISTENCY_CHECK     ( 1ULL << 11 )
-#define WSREP_CAP_ENCAPSULATION         ( 1ULL << 12 )
+#define WSREP_CAP_UNORDERED             ( 1ULL << 12 )
+#define WSREP_CAP_ENCAPSULATE           ( 1ULL << 13 )
 
 /*!
  *  Write set replication flags
@@ -238,10 +239,10 @@ typedef void (*wsrep_view_cb_t) (void*                    app_ctx,
  * @retval WSREP_NOT_IMPLEMENTED appl. does not support the write set format
  * @retval WSREP_ERROR failed to apply the write set
  */
-typedef enum wsrep_status (*wsrep_apply_cb_t)   (void*               recv_ctx,
-                                                 const void*         data,
-                                                 size_t              size,
-                                                 wsrep_seqno_t       seqno);
+typedef enum wsrep_status (*wsrep_apply_cb_t) (void*         recv_ctx,
+                                               const void*   data,
+                                               size_t        size,
+                                               wsrep_seqno_t seqno);
 
 /*!
  * @brief commit callback
@@ -256,9 +257,27 @@ typedef enum wsrep_status (*wsrep_apply_cb_t)   (void*               recv_ctx,
  * @retval WSREP_OK
  * @retval WSREP_ERROR call failed
  */
-typedef enum wsrep_status (*wsrep_commit_cb_t)  (void*         recv_ctx,
-                                                 wsrep_seqno_t seqno,
-                                                 wsrep_bool_t  commit);
+typedef enum wsrep_status (*wsrep_commit_cb_t) (void*         recv_ctx,
+                                                wsrep_seqno_t seqno,
+                                                wsrep_bool_t  commit);
+
+/*!
+ * @brief unordered callback
+ *
+ * This handler is called to execute unordered actions (actions that need not
+ * to be executed in any particular order) attached to writeset.
+ *
+ * @param recv_ctx receiver context pointer provided by the application
+ * @param seqno    global seqno part of the write set to be committed
+ * @param commit   true - commit writeset, false - rollback writeset
+ *
+ * @return success code:
+ * @retval WSREP_OK
+ * @retval WSREP_ERROR call failed
+ */
+typedef enum wsrep_status (*wsrep_unordered_cb_t) (void*       recv_ctx,
+                                                   const void* data,
+                                                   size_t      size);
 
 /*!
  * @brief a callback to donate state snapshot
@@ -299,7 +318,7 @@ typedef int (*wsrep_sst_donate_cb_t) (void*               app_ctx,
  *
  * @param app_ctx application context
  */
-typedef void (*wsrep_synced_cb_t)(void* app_ctx);
+typedef void (*wsrep_synced_cb_t) (void* app_ctx);
 
 
 /*!
@@ -330,6 +349,8 @@ struct wsrep_init_args
     /* applier callbacks */
     wsrep_apply_cb_t      apply_cb;        //!< apply  callback
     wsrep_commit_cb_t     commit_cb;       //!< commit callback
+    wsrep_unordered_cb_t  unordered_cb;    //!< callback for unordered actions
+                                                /* optional, can be NULL */
 
     /* state snapshot transfer callbacks */
     wsrep_sst_donate_cb_t sst_donate_cb;   //!< starting to donate
@@ -579,10 +600,13 @@ struct wsrep_ {
   /*!
    * @brief Appends a row reference in transaction's write set
    *
+   * Both nocopy and shared parameters can be ignored by provider.
+   *
    * @param wsrep       this wsrep handle
    * @param trx_handle  transaction handle
    * @param key         array of keys
    * @param key_len     length of the array of keys
+   * @param nocopy      can be set to TRUE if keys persist until commit.
    * @param shared      boolean denoting if key corresponds to shared resource
    */
     wsrep_status_t (*append_key)(wsrep_t*            wsrep,
@@ -591,23 +615,29 @@ struct wsrep_ {
                                  size_t              key_len,
                                  wsrep_bool_t        nocopy,
                                  wsrep_bool_t        shared);
+
    /*!
     * @brief Appends data in transaction's write set
     *
     * This method can be called any time before commit and it
     * appends data block into transaction's write set.
     *
+    * Both nocopy and unordered parameters can be ignored by provider.
+    *
     * @param wsrep      this wsrep handle
     * @param trx_handle transaction handle
     * @param data data  buffer
     * @param data_len   data buffer length
+    * @param nocopy     can be set to TRUE if data persists until commit.
+    * @param unordered  can be set to TRUE if this part of the write set
+    *                   executed out of order.
     */
     wsrep_status_t (*append_data)(wsrep_t*            wsrep,
                                   wsrep_trx_handle_t* trx_handle,
                                   const void*         data,
                                   size_t              data_len,
-                                  wsrep_bool_t        nocopy);
-
+                                  wsrep_bool_t        nocopy,
+                                  wsrep_bool_t        unordered);
 
   /*!
    * @brief Get causal ordering for read operation

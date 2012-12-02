@@ -160,7 +160,8 @@ static wsrep_status_t dummy_append_data(
     wsrep_trx_handle_t* trx_handle __attribute__((unused)),
     const void*         data       __attribute__((unused)),
     const size_t        data_len   __attribute__((unused)),
-    const bool          nocopy     __attribute__((unused)))
+    const bool          nocopy     __attribute__((unused)),
+    const bool          unordered  __attribute__((unused)))
 {
     WSREP_DBUG_ENTER(w);
     return WSREP_OK;
