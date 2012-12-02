@@ -70,8 +70,8 @@ static int verify(const wsrep_t *wh, const char *iface_ver)
     VERIFY(wh->post_rollback);
     VERIFY(wh->replay_trx);
     VERIFY(wh->abort_pre_commit);
-    VERIFY(wh->append_query);
     VERIFY(wh->append_key);
+    VERIFY(wh->append_data);
     VERIFY(wh->free_connection);
     VERIFY(wh->to_execute_start);
     VERIFY(wh->to_execute_end);

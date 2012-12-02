@@ -143,17 +143,6 @@ static wsrep_status_t dummy_abort_pre_commit(
     return WSREP_OK;
 }
 
-static wsrep_status_t dummy_append_query(
-    wsrep_t* w,
-    wsrep_trx_handle_t* trx_handle __attribute__((unused)),
-    const char*         query      __attribute__((unused)),
-    const time_t        timeval    __attribute__((unused)),
-    const uint32_t      randseed   __attribute__((unused)))
-{
-    WSREP_DBUG_ENTER(w);
-    return WSREP_OK;
-}
-
 static wsrep_status_t dummy_append_key(
     wsrep_t* w,
     wsrep_trx_handle_t* trx_handle  __attribute__((unused)),
@@ -326,7 +315,6 @@ static wsrep_t dummy_iface = {
     &dummy_post_rollback,
     &dummy_replay_trx,
     &dummy_abort_pre_commit,
-    &dummy_append_query,
     &dummy_append_key,
     &dummy_append_data,
     &dummy_causal_read,

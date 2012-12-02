@@ -577,21 +577,6 @@ struct wsrep_ {
                                        wsrep_trx_id_t victim_trx);
 
   /*!
-   * @brief Appends a query in transaction's write set
-   *
-   * @param wsrep      this wsrep handle
-   * @param trx_handle transaction handle
-   * @param query      SQL statement string
-   * @param timeval    time to use for time functions
-   * @param randseed   seed for rand
-   */
-    wsrep_status_t (*append_query)(wsrep_t*            wsrep,
-                                   wsrep_trx_handle_t* trx_handle,
-                                   const char*         query,
-                                   time_t              timeval,
-                                   uint32_t            randseed);
-
-  /*!
    * @brief Appends a row reference in transaction's write set
    *
    * @param wsrep       this wsrep handle
