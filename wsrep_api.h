@@ -60,6 +60,7 @@ extern "C" {
 
 typedef uint64_t wsrep_trx_id_t;  //!< application transaction ID
 typedef uint64_t wsrep_conn_id_t; //!< application connection ID
+typedef uint64_t wsrep_stream_t;  //!< event/stream type of encapsulated event
 typedef int64_t  wsrep_seqno_t;   //!< sequence number of a writeset, etc.
 typedef _Bool    wsrep_bool_t;    //!< should be the same as standard bool
 
@@ -268,8 +269,8 @@ typedef enum wsrep_status (*wsrep_commit_cb_t) (void*         recv_ctx,
  * to be executed in any particular order) attached to writeset.
  *
  * @param recv_ctx receiver context pointer provided by the application
- * @param seqno    global seqno part of the write set to be committed
- * @param commit   true - commit writeset, false - rollback writeset
+ * @param data     data buffer containing the write set
+ * @param size     data buffer size
  *
  * @return success code:
  * @retval WSREP_OK
@@ -278,6 +279,28 @@ typedef enum wsrep_status (*wsrep_commit_cb_t) (void*         recv_ctx,
 typedef enum wsrep_status (*wsrep_unordered_cb_t) (void*       recv_ctx,
                                                    const void* data,
                                                    size_t      size);
+
+/*!
+ * @brief expand callback
+ *
+ * This handler is called to expand events encapsulated by encapsulate()
+ * method.
+ *
+ * @param recv_ctx receiver context pointer provided by the application
+ * @param data     data buffer containing the write set
+ * @param size     data buffer size
+ * @param type     event/stream type
+ * @param prod_id  producer/stream ID
+ *
+ * @return success code:
+ * @retval WSREP_OK
+ * @retval WSREP_ERROR call failed
+ */
+typedef enum wsrep_status (*wsrep_expand_cb_t) (void*               recv_ctx,
+                                                const void*         data,
+                                                size_t              size,
+                                                wsrep_stream_t      type,
+                                                const wsrep_uuid_t* prod_id);
 
 /*!
  * @brief a callback to donate state snapshot
@@ -350,7 +373,7 @@ struct wsrep_init_args
     wsrep_apply_cb_t      apply_cb;        //!< apply  callback
     wsrep_commit_cb_t     commit_cb;       //!< commit callback
     wsrep_unordered_cb_t  unordered_cb;    //!< callback for unordered actions
-                                                /* optional, can be NULL */
+    wsrep_expand_cb_t     expand_cb;       //!< callback to expand encapsulated events
 
     /* state snapshot transfer callbacks */
     wsrep_sst_donate_cb_t sst_donate_cb;   //!< starting to donate
@@ -379,19 +402,19 @@ struct wsrep_stats_var
 };
 
 
-/*! Key part structure */
-typedef struct wsrep_key_part_
+/*! Abstract data buffer structure */
+typedef struct wsrep_buf
 {
-    const void* buf;     /*!< Buffer containing key part data */
-    size_t      buf_len; /*!< Length of buffer */
-} wsrep_key_part_t;
+    const void* ptr; /*!< Pointer to data buffer */
+    size_t      len; /*!< Length of buffer */
+} wsrep_buf_t;
 
 /*! Key struct used to pass certification keys for transaction handling calls.
  *  A key consists of zero or more key parts. */
-typedef struct wsrep_key_
+typedef struct wsrep_key
 {
-    const wsrep_key_part_t* key_parts;     /*!< Array of key parts        */
-    size_t                  key_parts_len; /*!< Length of key parts array */
+    const wsrep_buf_t* key_parts;     /*!< Array of key parts  */
+    int                key_parts_num; /*!< Number of key parts */
 } wsrep_key_t;
 
 /*! Transaction handle struct passed for wsrep transaction handling calls */
@@ -604,15 +627,15 @@ struct wsrep_ {
    *
    * @param wsrep       this wsrep handle
    * @param trx_handle  transaction handle
-   * @param key         array of keys
-   * @param key_len     length of the array of keys
+   * @param keys        array of keys
+   * @param keys_num    length of the array of keys
    * @param nocopy      can be set to TRUE if keys persist until commit.
    * @param shared      boolean denoting if key corresponds to shared resource
    */
     wsrep_status_t (*append_key)(wsrep_t*            wsrep,
                                  wsrep_trx_handle_t* trx_handle,
-                                 const wsrep_key_t*  key,
-                                 size_t              key_len,
+                                 const wsrep_key_t*  keys,
+                                 int                 keys_num,
                                  wsrep_bool_t        nocopy,
                                  wsrep_bool_t        shared);
 
@@ -672,14 +695,13 @@ struct wsrep_ {
   /*!
    * @brief Replicates a query and starts "total order isolation" section.
    *
-   * Replicates the query and returns success code, which
-   * caller must check. Total order isolation continues
-   * until to_execute_end() is called.
+   * Replicates the action spec and returns success code, which caller must
+   * check. Total order isolation continues until to_execute_end() is called.
    *
    * @param wsrep       this wsrep handle
    * @param conn_id     connection ID
-   * @param key         array of keys
-   * @param key_len     lenght of the array of keys
+   * @param keys        array of keys
+   * @param keys_num    lenght of the array of keys
    * @param action      action to be executed
    * @param action_len  action buffer size
    * @param seqno       seqno part of the action ID
@@ -690,8 +712,8 @@ struct wsrep_ {
    */
     wsrep_status_t (*to_execute_start)(wsrep_t*           wsrep,
                                        wsrep_conn_id_t    conn_id,
-                                       const wsrep_key_t* key,
-                                       size_t             key_len,
+                                       const wsrep_key_t* keys,
+                                       int                keys_num,
                                        const void*        action,
                                        size_t             action_len,
                                        wsrep_seqno_t*     seqno);
@@ -710,6 +732,28 @@ struct wsrep_ {
    * @retval WSREP_NODE_FAIL  must close all connections and reinit
    */
     wsrep_status_t (*to_execute_end)(wsrep_t* wsrep, wsrep_conn_id_t conn_id);
+
+  /*!
+   * @brief Encapsulates opaque event into provider stream.
+   *
+   * On receiving end expand_cb_t callback will be called to expand and
+   * process the event.
+   *
+   * @param wsrep       this wsrep handle
+   * @param events      array of events to be encapsulated
+   * @param events_num  number of events
+   * @param type        event/stream type
+   * @param prod_id     event producer/stream ID
+   *
+   * @retval WSREP_OK         encapsulation succeeded
+   * @retval WSREP_CONN_FAIL  encapsulation failed, recoverable
+   * @retval WSREP_NODE_FAIL  encapsulation failed, unrecoverable
+   */
+    wsrep_status_t (*encapsulate)(wsrep_t*            wsrep,
+                                  const wsrep_buf_t*  events,
+                                  int                 events_num,
+                                  wsrep_stream_t      type,
+                                  const wsrep_uuid_t* prod_id);
 
   /*!
    * @brief Signals to wsrep provider that state snapshot has been sent to
@@ -857,6 +901,11 @@ struct wsrep_ {
    * wsrep provider vendor name
    */
     const char* provider_vendor;
+
+  /*!
+   * wsrep provider stream type
+   */
+    wsrep_stream_t provider_type;
 
   /*!
    * @brief Frees allocated resources before unloading the library.

@@ -147,7 +147,7 @@ static wsrep_status_t dummy_append_key(
     wsrep_t* w,
     wsrep_trx_handle_t* trx_handle  __attribute__((unused)),
     const wsrep_key_t*  key         __attribute__((unused)),
-    const size_t        key_len     __attribute__((unused)),
+    const int           key_len     __attribute__((unused)),
     const bool          nocopy      __attribute__((unused)),
     const bool          shared      __attribute__((unused)))
 {
@@ -185,12 +185,12 @@ static wsrep_status_t dummy_free_connection(
 
 static wsrep_status_t dummy_to_execute_start(
     wsrep_t* w,
-    const wsrep_conn_id_t  conn_id   __attribute__((unused)),
-    const wsrep_key_t*     key       __attribute__((unused)),
-    const size_t           key_len   __attribute__((unused)),
-    const void*            query     __attribute__((unused)),
-    const size_t           query_len __attribute__((unused)),
-    wsrep_seqno_t*         seqno     __attribute__((unused)))
+    const wsrep_conn_id_t  conn_id    __attribute__((unused)),
+    const wsrep_key_t*     key        __attribute__((unused)),
+    const int              key_len    __attribute__((unused)),
+    const void*            action     __attribute__((unused)),
+    const size_t           action_len __attribute__((unused)),
+    wsrep_seqno_t*         seqno      __attribute__((unused)))
 {
     WSREP_DBUG_ENTER(w);
     return WSREP_OK;
@@ -199,6 +199,17 @@ static wsrep_status_t dummy_to_execute_start(
 static wsrep_status_t dummy_to_execute_end(
     wsrep_t* w,
     const wsrep_conn_id_t  conn_id   __attribute__((unused)))
+{
+    WSREP_DBUG_ENTER(w);
+    return WSREP_OK;
+}
+
+static wsrep_status_t dummy_encapsulate(
+    wsrep_t* w,
+    const wsrep_buf_t*     events     __attribute__((unused)),
+    int                    events_num __attribute__((unused)),
+    wsrep_stream_t         type       __attribute__((unused)),
+    const wsrep_uuid_t*    producer   __attribute__((unused)))
 {
     WSREP_DBUG_ENTER(w);
     return WSREP_OK;
@@ -322,6 +333,7 @@ static wsrep_t dummy_iface = {
     &dummy_free_connection,
     &dummy_to_execute_start,
     &dummy_to_execute_end,
+    &dummy_encapsulate,
     &dummy_sst_sent,
     &dummy_sst_received,
     &dummy_snapshot,
@@ -337,6 +349,7 @@ static wsrep_t dummy_iface = {
     WSREP_NONE,
     WSREP_INTERFACE_VERSION,
     "Codership Oy <info@codership.com>",
+    0xdeadbeef,
     &dummy_free,
     NULL,
     NULL
