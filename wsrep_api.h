@@ -62,7 +62,11 @@ typedef uint64_t wsrep_trx_id_t;  //!< application transaction ID
 typedef uint64_t wsrep_conn_id_t; //!< application connection ID
 typedef uint64_t wsrep_stream_t;  //!< event/stream type of encapsulated event
 typedef int64_t  wsrep_seqno_t;   //!< sequence number of a writeset, etc.
+#ifdef __cplusplus
+typedef bool     wsrep_bool_t;
+#else
 typedef _Bool    wsrep_bool_t;    //!< should be the same as standard bool
+#endif
 
 /*! undefined seqno */
 #define WSREP_SEQNO_UNDEFINED (-1)
@@ -414,7 +418,7 @@ typedef struct wsrep_buf
 typedef struct wsrep_key
 {
     const wsrep_buf_t* key_parts;     /*!< Array of key parts  */
-    int                key_parts_num; /*!< Number of key parts */
+    long               key_parts_num; /*!< Number of key parts */
 } wsrep_key_t;
 
 /*! Transaction handle struct passed for wsrep transaction handling calls */
@@ -635,7 +639,7 @@ struct wsrep_ {
     wsrep_status_t (*append_key)(wsrep_t*            wsrep,
                                  wsrep_trx_handle_t* trx_handle,
                                  const wsrep_key_t*  keys,
-                                 int                 keys_num,
+                                 long                keys_num,
                                  wsrep_bool_t        nocopy,
                                  wsrep_bool_t        shared);
 
@@ -713,7 +717,7 @@ struct wsrep_ {
     wsrep_status_t (*to_execute_start)(wsrep_t*           wsrep,
                                        wsrep_conn_id_t    conn_id,
                                        const wsrep_key_t* keys,
-                                       int                keys_num,
+                                       long               keys_num,
                                        const void*        action,
                                        size_t             action_len,
                                        wsrep_seqno_t*     seqno);
@@ -751,7 +755,7 @@ struct wsrep_ {
    */
     wsrep_status_t (*encapsulate)(wsrep_t*            wsrep,
                                   const wsrep_buf_t*  events,
-                                  int                 events_num,
+                                  long                events_num,
                                   wsrep_stream_t      type,
                                   const wsrep_uuid_t* prod_id);
 
@@ -862,7 +866,7 @@ struct wsrep_ {
    */
     wsrep_status_t (*lock) (wsrep_t* wsrep,
                             const char* name, wsrep_bool_t shared,
-                            int64_t owner, int64_t tout);
+                            uint64_t owner, int64_t tout);
 
   /*!
    * @brief Release global named lock
@@ -873,7 +877,7 @@ struct wsrep_ {
    * @return wsrep status or negative error code
    * @retval -EPERM lock does not belong to this owner
    */
-    wsrep_status_t (*unlock) (wsrep_t* wsrep, const char* name, int64_t owner);
+    wsrep_status_t (*unlock) (wsrep_t* wsrep, const char* name, uint64_t owner);
 
   /*!
    * @brief Check if global named lock is locked
@@ -884,7 +888,7 @@ struct wsrep_ {
    * @param node  if not NULL will contain owner's node UUID
    * @return true if lock is locked
    */
-    wsrep_bool_t (*is_locked) (wsrep_t* wsrep, const char* name, int64_t* conn,
+    wsrep_bool_t (*is_locked) (wsrep_t* wsrep, const char* name, uint64_t* conn,
                                wsrep_uuid_t* node);
 
   /*!
