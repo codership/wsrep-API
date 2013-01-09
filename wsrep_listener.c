@@ -82,15 +82,16 @@ view_cb (void*                    app_ctx   __attribute__((unused)),
  *  If writesets don't conflict on keys, it may be called concurrently to
  *  utilize several CPU cores. */
 static wsrep_status_t
-apply_cb (void*         recv_ctx,
-          const void*   ws_data __attribute__((unused)),
-          size_t        ws_size,
-          wsrep_seqno_t seqno)
+apply_cb (void*                   recv_ctx,
+          const void*             ws_data __attribute__((unused)),
+          size_t                  ws_size,
+          const wsrep_trx_meta_t* meta)
 {
     struct receiver_context* ctx = (struct receiver_context*)recv_ctx;
 
     snprintf (ctx->msg, sizeof(ctx->msg),
-              "Got writeset %lld, size %zu", (long long)seqno, ws_size);
+              "Got writeset %lld, size %zu", (long long)meta->gtid.seqno,
+              ws_size);
 
     return WSREP_OK;
 }
@@ -100,9 +101,9 @@ apply_cb (void*         recv_ctx,
  *  By default this callback is called synchronously in the order determined
  *  by seqno. */
 static wsrep_status_t
-commit_cb (void*         recv_ctx,
-           wsrep_seqno_t seqno __attribute__((unused)),
-           bool          commit)
+commit_cb (void*                   recv_ctx,
+           const wsrep_trx_meta_t* meta __attribute__((unused)),
+           wsrep_bool_t            commit)
 {
     struct receiver_context* ctx = (struct receiver_context*)recv_ctx;
 
@@ -123,7 +124,7 @@ sst_donate_cb (void*               app_ctx   __attribute__((unused)),
                wsrep_seqno_t       seqno     __attribute__((unused)),
                const char*         state     __attribute__((unused)),
                size_t              state_len __attribute__((unused)),
-               bool                bypass    __attribute__((unused)))
+               wsrep_bool_t        bypass    __attribute__((unused)))
 { return 0; }
 
 static void synced_cb (void* app_ctx __attribute__((unused))) {}
@@ -208,7 +209,7 @@ int main (int argc, char* argv[])
     }
 
     /* Connect to cluster */
-    rc = wsrep->connect (wsrep, cluster_name, wsrep_uri, "");
+    rc = wsrep->connect (wsrep, cluster_name, wsrep_uri, "", 0);
     if (0 != rc)
     {
         fprintf (stderr,

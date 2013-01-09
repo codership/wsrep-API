@@ -8,7 +8,7 @@ COMPILE = gcc -Wall -Wextra -Werror -O2 -g
 %.o : %.c
 	$(COMPILE) -c $<
 
-libwsrep_SRCS = wsrep_loader.c wsrep_dummy.c wsrep_uuid.c
+libwsrep_SRCS = wsrep_loader.c wsrep_dummy.c wsrep_uuid.c wsrep_gtid.c
 
 libwsrep_OBJS = $(patsubst %.c,%.o,$(libwsrep_SRCS))
 
