@@ -143,7 +143,7 @@ wsrep_uuid_print (const wsrep_uuid_t* uuid, char* str, size_t str_len);
 /*!
  * Global transaction identifier
  */
-typedef struct wsrep_gtid_
+typedef struct wsrep_gtid
 {
     wsrep_uuid_t  uuid;  /*!< History UUID */
     wsrep_seqno_t seqno; /*!< Sequence number */
@@ -174,7 +174,7 @@ wsrep_gtid_print(const wsrep_gtid_t* gtid, char* str, size_t str_len);
 /*!
  * Transaction meta data
  */
-typedef struct wsrep_trx_meta_
+typedef struct wsrep_trx_meta
 {
     wsrep_gtid_t  gtid;       /*!< Global transaction identifier */
     wsrep_seqno_t depends_on; /*!< Sequence number part of the last transaction this transaction depends on */
