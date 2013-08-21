@@ -1,4 +1,4 @@
-/* Copyright (C) 2009-2011 Codership Oy <info@codership.com>
+/* Copyright (C) 2009-2013 Codership Oy <info@codership.com>
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -57,6 +57,7 @@ extern "C" {
  *  Write set replication flags
  */
 #define WSREP_FLAG_PA_SAFE              ( 1ULL << 0 )
+#define WSREP_FLAG_COMMUTATIVE          ( 1ULL << 1 )
 
 typedef uint64_t wsrep_trx_id_t;  //!< application transaction ID
 typedef uint64_t wsrep_conn_id_t; //!< application connection ID
