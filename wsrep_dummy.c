@@ -146,11 +146,11 @@ static wsrep_status_t dummy_abort_pre_commit(
 
 static wsrep_status_t dummy_append_key(
     wsrep_t* w,
-    wsrep_trx_handle_t* trx_handle  __attribute__((unused)),
-    const wsrep_key_t*  key         __attribute__((unused)),
-    const long          key_num     __attribute__((unused)),
-    const bool          copy        __attribute__((unused)),
-    const bool          shared      __attribute__((unused)))
+    wsrep_trx_handle_t*    trx_handle __attribute__((unused)),
+    const wsrep_key_t*     key        __attribute__((unused)),
+    const long             key_num    __attribute__((unused)),
+    const wsrep_key_type_t key_type   __attribute__((unused)),
+    const bool             copy       __attribute__((unused)))
 {
     WSREP_DBUG_ENTER(w);
     return WSREP_OK;

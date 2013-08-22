@@ -446,6 +446,17 @@ typedef struct wsrep_key
     long               key_parts_num; /*!< Number of key parts */
 } wsrep_key_t;
 
+/*! Key type:
+ *  EXCLUSIVE conflicts with any key type
+ *  SEMI      reserved. If not supported, will be interpeted as EXCLUSIVE
+ *  SHARED    conflicts only with EXCLUSIVE keys */
+typedef enum wsrep_key_type
+{
+    WSREP_KEY_SHARED = 0,
+    WSREP_KEY_SEMI,
+    WSREP_KEY_EXCLUSIVE
+} wsrep_key_type_t;
+
 /*! Transaction handle struct passed for wsrep transaction handling calls */
 typedef struct wsrep_trx_handle_
 {
@@ -471,7 +482,6 @@ static inline wsrep_trx_handle_t* wsrep_trx_handle_for_id(
     }
     return trx_handle;
 }
-
 
 typedef struct wsrep_ wsrep_t;
 /*!
@@ -670,8 +680,8 @@ struct wsrep_ {
                                  wsrep_trx_handle_t* trx_handle,
                                  const wsrep_key_t*  keys,
                                  long                keys_num,
-                                 wsrep_bool_t        copy,
-                                 wsrep_bool_t        shared);
+                                 wsrep_key_type_t    key_type,
+                                 wsrep_bool_t        copy);
 
    /*!
     * @brief Appends data in transaction's write set
