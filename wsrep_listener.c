@@ -237,7 +237,7 @@ int main (int argc, char* argv[])
     }
 
     signal (SIGTERM, graceful_leave);
-    signal (SIGINT, graceful_leave);
+    signal (SIGINT,  graceful_leave);
 
     /* Listening threads are now running and receiving writesets. Wait for them
      * to join. Threads will join after signal handler closes wsrep connection*/
