@@ -778,6 +778,34 @@ struct wsrep_ {
     wsrep_status_t (*to_execute_end)(wsrep_t* wsrep, wsrep_conn_id_t conn_id);
 
   /*!
+   * @brief Submits preordered replication events to proveider.
+   *
+   * The contract is that they will be committed in the same (partial) order
+   * this method was called
+   *
+   * @param wsrep     this wsrep handle
+   * @param source_id ID of the event producer, also serves as the partial order
+   *                  or stream ID - events with different source_ids won't be
+   *                  ordered with respect to each other.
+   * @param pa_range  the number of preceding events this event can be processed
+   *                  in parallel with. A value of 0 means strict serial
+   *                  processing. Note: commits always happend in wsrep order.
+   * @param data      an array of data buffers.
+   * @param count     length of data buffer array.
+   * @param copy      whether provider needs to make a copy of event
+   *
+   * @retval WSREP_OK         cluster commit succeeded
+   * @retval WSREP_CONN_FAIL  must close client connection
+   * @retval WSREP_NODE_FAIL  must close all connections and reinit
+   */
+    wsrep_status_t (*preordered)(wsrep_t*                wsrep,
+                                 const wsrep_uuid_t*     source_id,
+                                 int                     pa_range,
+                                 const struct wsrep_buf* data,
+                                 long                    count,
+                                 wsrep_bool_t            copy);
+
+  /*!
    * @brief Signals to wsrep provider that state snapshot has been sent to
    *        joiner.
    *
