@@ -459,29 +459,29 @@ typedef enum wsrep_key_type
 } wsrep_key_type_t;
 
 /*! Transaction handle struct passed for wsrep transaction handling calls */
-typedef struct wsrep_trx_handle_
+typedef struct wsrep_ws_handle_
 {
     wsrep_trx_id_t trx_id; //!< transaction ID
     void*          opaque; //!< opaque provider transaction context data
-} wsrep_trx_handle_t;
+} wsrep_ws_handle_t;
 
 /*!
- * @brief Helper method to reset trx handle state when trx id changes
+ * @brief Helper method to reset trx writeset handle state when trx id changes
  *
- * Instead of passing wsrep_trx_handle_t directly to wsrep calls,
+ * Instead of passing wsrep_ws_handle_t directly to wsrep calls,
  * wrapping handle with this call offloads bookkeeping from
  * application.
  */
-static inline wsrep_trx_handle_t* wsrep_trx_handle_for_id(
-    wsrep_trx_handle_t* trx_handle,
-    wsrep_trx_id_t      trx_id)
+static inline wsrep_ws_handle_t* wsrep_ws_handle_for_trx(
+    wsrep_ws_handle_t* ws_handle,
+    wsrep_trx_id_t     trx_id)
 {
-    if (trx_handle->trx_id != trx_id)
+    if (ws_handle->trx_id != trx_id)
     {
-        trx_handle->trx_id = trx_id;
-        trx_handle->opaque = NULL;
+        ws_handle->trx_id = trx_id;
+        ws_handle->opaque = NULL;
     }
-    return trx_handle;
+    return ws_handle;
 }
 
 typedef struct wsrep_ wsrep_t;
@@ -580,7 +580,7 @@ struct wsrep_ {
    * commit. Otherwise transaction must rollback.
    *
    * @param wsrep      provider handle
-   * @param trx_handle transaction which is committing
+   * @param ws_handle  writeset of committing transaction
    * @param conn_id    connection ID
 //   * @param data       array of application data buffers
 //   * @param count      buffer count
@@ -594,7 +594,7 @@ struct wsrep_ {
    */
     wsrep_status_t (*pre_commit)(wsrep_t*                wsrep,
                                  wsrep_conn_id_t         conn_id,
-                                 wsrep_trx_handle_t*     trx_handle,
+                                 wsrep_ws_handle_t*      ws_handle,
 //                                 const struct wsrep_buf* data,
 //                                 long                    count,
                                  uint64_t                flags,
@@ -606,21 +606,21 @@ struct wsrep_ {
    * Ends commit critical section.
    *
    * @param wsrep      provider handle
-   * @param trx_handle transaction which is committing
+   * @param ws_handle  writeset of committing transaction
    * @retval WSREP_OK  post_commit succeeded
    */
     wsrep_status_t (*post_commit) (wsrep_t*            wsrep,
-                                   wsrep_trx_handle_t* trx_handle);
+                                   wsrep_ws_handle_t*  ws_handle);
 
   /*!
    * @brief Releases resources after transaction rollback.
    *
    * @param wsrep      provider handle
-   * @param trx_handle transaction which is committing
+   * @param ws_handle  writeset of committing transaction
    * @retval WSREP_OK  post_rollback succeeded
    */
     wsrep_status_t (*post_rollback)(wsrep_t*            wsrep,
-                                    wsrep_trx_handle_t* trx_handle);
+                                    wsrep_ws_handle_t*  ws_handle);
 
   /*!
    * @brief Replay trx as a slave write set
@@ -631,7 +631,7 @@ struct wsrep_ {
    * test based on write set content can be different to DBMS lock conflicts.
    *
    * @param wsrep      provider handle
-   * @param trx_handle transaction which is committing
+   * @param ws_handle  writeset of committing transaction
    * @param trx_ctx    transaction context
    *
    * @retval WSREP_OK         cluster commit succeeded
@@ -642,7 +642,7 @@ struct wsrep_ {
    * @retval WSREP_NODE_FAIL  must close all connections and reinit
    */
     wsrep_status_t (*replay_trx)(wsrep_t*            wsrep,
-                                 wsrep_trx_handle_t* trx_handle,
+                                 wsrep_ws_handle_t*  ws_handle,
                                  void*               trx_ctx);
 
   /*!
@@ -672,14 +672,14 @@ struct wsrep_ {
    * interpreted as WSREP_KEY_EXCLUSIVE).
    *
    * @param wsrep      provider handle
-   * @param trx_handle transaction handle
+   * @param ws_handle  writeset handle
    * @param keys       array of keys
    * @param keys_num   length of the array of keys
    * @param copy       can be set to FALSE if keys persist until commit.
    * @param shared     boolean denoting if key corresponds to shared resource
    */
     wsrep_status_t (*append_key)(wsrep_t*            wsrep,
-                                 wsrep_trx_handle_t* trx_handle,
+                                 wsrep_ws_handle_t*  ws_handle,
                                  const wsrep_key_t*  keys,
                                  long                keys_num,
                                  wsrep_key_type_t    key_type,
@@ -689,12 +689,12 @@ struct wsrep_ {
     * @brief Appends data to transaction write set
     *
     * This method can be called any time before commit and it
-    * appends data block into transaction's write set.
+    * appends a number of data buffers to transaction write set.
     *
     * Both copy and unordered flags can be ignored by provider.
     *
     * @param wsrep      provider handle
-    * @param trx_handle transaction handle
+    * @param ws_handle  writeset handle
     * @param data       array of data buffers
     * @param count      buffer count
     * @param copy       can be set to FALSE if data persists until commit.
@@ -702,7 +702,7 @@ struct wsrep_ {
     *                   executed out of order.
     */
     wsrep_status_t (*append_data)(wsrep_t*                wsrep,
-                                  wsrep_trx_handle_t*     trx_handle,
+                                  wsrep_ws_handle_t*      ws_handle,
                                   const struct wsrep_buf* data,
                                   long                    count,
                                   wsrep_bool_t            copy,
@@ -717,13 +717,13 @@ struct wsrep_ {
     * Copy flag can be ignored by provider.
     *
     * @param wsrep      provider handle
-    * @param trx_handle transaction handle
+    * @param ws_handle  writeset handle
     * @param annotation array of annotation strings
     * @param count      annotation string count
     * @param copy       can be set to FALSE if data persists until commit.
     */
     wsrep_status_t (*annotate)(wsrep_t*             wsrep,
-                               wsrep_trx_handle_t*  trx_handle,
+                               wsrep_ws_handle_t*   ws_handle,
                                const char*          annotation[],
                                long                 count,
                                wsrep_bool_t         copy);

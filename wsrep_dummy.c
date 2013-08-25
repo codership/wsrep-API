@@ -100,7 +100,7 @@ static wsrep_status_t dummy_recv(wsrep_t* w,
 static wsrep_status_t dummy_pre_commit(
     wsrep_t* w,
     const wsrep_conn_id_t   conn_id    __attribute__((unused)),
-    wsrep_trx_handle_t*     trx_handle __attribute__((unused)),
+    wsrep_ws_handle_t*      ws_handle  __attribute__((unused)),
 //    const struct wsrep_buf* data       __attribute__((unused)),
 //    const long              count      __attribute__((unused)),
     uint64_t                flags      __attribute__((unused)),
@@ -112,7 +112,7 @@ static wsrep_status_t dummy_pre_commit(
 
 static wsrep_status_t dummy_post_commit(
     wsrep_t* w,
-    wsrep_trx_handle_t* trx_handle __attribute__((unused)))
+    wsrep_ws_handle_t*  ws_handle  __attribute__((unused)))
 {
     WSREP_DBUG_ENTER(w);
     return WSREP_OK;
@@ -120,7 +120,7 @@ static wsrep_status_t dummy_post_commit(
 
 static wsrep_status_t dummy_post_rollback(
     wsrep_t* w,
-    wsrep_trx_handle_t* trx_handle __attribute__((unused)))
+    wsrep_ws_handle_t*  ws_handle  __attribute__((unused)))
 {
     WSREP_DBUG_ENTER(w);
     return WSREP_OK;
@@ -128,7 +128,7 @@ static wsrep_status_t dummy_post_rollback(
 
 static wsrep_status_t dummy_replay_trx(
     wsrep_t* w,
-    wsrep_trx_handle_t* trx_handle __attribute__((unused)),
+    wsrep_ws_handle_t*  ws_handle  __attribute__((unused)),
     void*               trx_ctx    __attribute__((unused)))
 {
     WSREP_DBUG_ENTER(w);
@@ -146,7 +146,7 @@ static wsrep_status_t dummy_abort_pre_commit(
 
 static wsrep_status_t dummy_append_key(
     wsrep_t* w,
-    wsrep_trx_handle_t*    trx_handle __attribute__((unused)),
+    wsrep_ws_handle_t*     ws_handle  __attribute__((unused)),
     const wsrep_key_t*     key        __attribute__((unused)),
     const long             key_num    __attribute__((unused)),
     const wsrep_key_type_t key_type   __attribute__((unused)),
@@ -158,7 +158,7 @@ static wsrep_status_t dummy_append_key(
 
 static wsrep_status_t dummy_append_data(
     wsrep_t* w,
-    wsrep_trx_handle_t*     trx_handle __attribute__((unused)),
+    wsrep_ws_handle_t*      ws_handle  __attribute__((unused)),
     const struct wsrep_buf* data       __attribute__((unused)),
     const long              count      __attribute__((unused)),
     const bool              copy       __attribute__((unused)),
@@ -170,7 +170,7 @@ static wsrep_status_t dummy_append_data(
 
 static wsrep_status_t dummy_annotate(
     wsrep_t* w,
-    wsrep_trx_handle_t*     trx_handle __attribute__((unused)),
+    wsrep_ws_handle_t*      ws_handle  __attribute__((unused)),
     const char**            annotation __attribute__((unused)),
     const long              count      __attribute__((unused)),
     const bool              copy       __attribute__((unused)))
