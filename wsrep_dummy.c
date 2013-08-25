@@ -264,6 +264,11 @@ static void dummy_stats_free (
     WSREP_DBUG_ENTER(w);
 }
 
+static void dummy_stats_reset (wsrep_t* w)
+{
+    WSREP_DBUG_ENTER(w);
+}
+
 static wsrep_seqno_t dummy_pause (wsrep_t* w)
 {
     WSREP_DBUG_ENTER(w);
@@ -341,6 +346,7 @@ static wsrep_t dummy_iface = {
     &dummy_snapshot,
     &dummy_stats_get,
     &dummy_stats_free,
+    &dummy_stats_reset,
     &dummy_pause,
     &dummy_resume,
     &dummy_desync,

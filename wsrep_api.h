@@ -711,7 +711,7 @@ struct wsrep_ {
    *
    * This call will block until causal ordering with all possible
    * preceding writes in the cluster is guaranteed. If pointer to
-   * seqno is non-null, the call stores the global transaction ID
+   * gtid is non-null, the call stores the global transaction ID
    * of the last transaction which is guaranteed to be ordered
    * causally before this call.
    *
@@ -865,9 +865,17 @@ struct wsrep_ {
   /*!
    * @brief Release resources that might be associated with the array.
    *
-   * @param wsrep this wsrep handle.
+   * @param wsrep     this wsrep handle.
+   * @param var_array array returned by stats_get().
    */
     void (*stats_free) (wsrep_t* wsrep, struct wsrep_stats_var* var_array);
+
+  /*!
+   * @brief Reset some stats variables to inital value, provider-dependent.
+   *
+   * @param wsrep this wsrep handle.
+   */
+    void (*stats_reset) (wsrep_t* wsrep);
 
   /*!
    * @brief Pauses writeset applying/committing.
