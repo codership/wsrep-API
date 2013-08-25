@@ -168,6 +168,17 @@ static wsrep_status_t dummy_append_data(
     return WSREP_OK;
 }
 
+static wsrep_status_t dummy_annotate(
+    wsrep_t* w,
+    wsrep_trx_handle_t*     trx_handle __attribute__((unused)),
+    const char**            annotation __attribute__((unused)),
+    const long              count      __attribute__((unused)),
+    const bool              copy       __attribute__((unused)))
+{
+    WSREP_DBUG_ENTER(w);
+    return WSREP_OK;
+}
+
 static wsrep_status_t dummy_causal_read(
     wsrep_t* w,
     wsrep_gtid_t* gtid __attribute__((unused)))
@@ -336,6 +347,7 @@ static wsrep_t dummy_iface = {
     &dummy_abort_pre_commit,
     &dummy_append_key,
     &dummy_append_data,
+    &dummy_annotate,
     &dummy_causal_read,
     &dummy_free_connection,
     &dummy_to_execute_start,

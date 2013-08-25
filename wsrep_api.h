@@ -51,7 +51,8 @@ extern "C" {
 #define WSREP_CAP_DISTRIBUTED_LOCKS     ( 1ULL << 10 )
 #define WSREP_CAP_CONSISTENCY_CHECK     ( 1ULL << 11 )
 #define WSREP_CAP_UNORDERED             ( 1ULL << 12 )
-#define WSREP_CAP_ENCAPSULATE           ( 1ULL << 13 )
+#define WSREP_CAP_ANNOTATION            ( 1ULL << 13 )
+#define WSREP_CAP_ENCAPSULATE           ( 1ULL << 14 )
 
 /*!
  *  Write set replication flags
@@ -494,7 +495,7 @@ struct wsrep_ {
   /*!
    * @brief Initializes wsrep provider
    *
-   * @param wsrep this wsrep handle
+   * @param wsrep provider handle
    * @param args  wsrep initialization parameters
    */
     wsrep_status_t (*init)   (wsrep_t*                      wsrep,
@@ -503,14 +504,14 @@ struct wsrep_ {
   /*!
    * @brief Returns provider capabilities flag bitmap
    *
-   * @param wsrep this wsrep handle
+   * @param wsrep provider handle
    */
     uint64_t (*capabilities) (wsrep_t* wsrep);
 
   /*!
    * @brief Passes provider-specific configuration string to provider.
    *
-   * @param wsrep this wsrep handle
+   * @param wsrep provider handle
    * @param conf  configuration string
    *
    * @retval WSREP_OK      configuration string was parsed successfully
@@ -521,7 +522,7 @@ struct wsrep_ {
   /*!
    * @brief Returns provider-specific string with current configuration values.
    *
-   * @param wsrep this wsrep handle
+   * @param wsrep provider handle
    *
    * @return a dynamically allocated string with current configuration
    *         parameter values
@@ -534,7 +535,7 @@ struct wsrep_ {
    * Returns when either node is ready to operate as a part of the clsuter
    * or fails to reach operating status.
    *
-   * @param wsrep        this wsrep handle
+   * @param wsrep        provider handle
    * @param cluster_name unique symbolic cluster name
    * @param cluster_url  URL-like cluster address (backend://address)
    * @param state_donor  name of the node to be asked for state transfer.
@@ -564,7 +565,7 @@ struct wsrep_ {
    *
    * This function never returns
    *
-   * @param wsrep this wsrep handle
+   * @param wsrep provider handle
    * @param recv_ctx receiver context
    */
     wsrep_status_t (*recv)(wsrep_t* wsrep, void* recv_ctx);
@@ -578,7 +579,7 @@ struct wsrep_ {
    * In case of WSREP_OK, starts commit critical section, transaction can
    * commit. Otherwise transaction must rollback.
    *
-   * @param wsrep      this wsrep handle
+   * @param wsrep      provider handle
    * @param trx_handle transaction which is committing
    * @param conn_id    connection ID
 //   * @param data       array of application data buffers
@@ -604,7 +605,7 @@ struct wsrep_ {
    *
    * Ends commit critical section.
    *
-   * @param wsrep      this wsrep handle
+   * @param wsrep      provider handle
    * @param trx_handle transaction which is committing
    * @retval WSREP_OK  post_commit succeeded
    */
@@ -614,7 +615,7 @@ struct wsrep_ {
   /*!
    * @brief Releases resources after transaction rollback.
    *
-   * @param wsrep      this wsrep handle
+   * @param wsrep      provider handle
    * @param trx_handle transaction which is committing
    * @retval WSREP_OK  post_rollback succeeded
    */
@@ -629,7 +630,7 @@ struct wsrep_ {
    * slave trx. Note that slave nodes see only trx write sets and certification
    * test based on write set content can be different to DBMS lock conflicts.
    *
-   * @param wsrep      this wsrep handle
+   * @param wsrep      provider handle
    * @param trx_handle transaction which is committing
    * @param trx_ctx    transaction context
    *
@@ -653,23 +654,24 @@ struct wsrep_ {
    * The kill routine checks that abort is not attmpted against a transaction
    * which is front of the caller (in total order).
    *
-   * @param wsrep      this wsrep handle
+   * @param wsrep      provider handle
    * @param bf_seqno   seqno of brute force trx, running this cancel
    * @param victim_trx transaction to be aborted, and which is committing
    *
-   * @retval WSREP_OK         abort secceded
-   * @retval WSREP_WARNING    abort failed
+   * @retval WSREP_OK       abort secceded
+   * @retval WSREP_WARNING  abort failed
    */
     wsrep_status_t (*abort_pre_commit)(wsrep_t*       wsrep,
                                        wsrep_seqno_t  bf_seqno,
                                        wsrep_trx_id_t victim_trx);
 
   /*!
-   * @brief Appends a row reference in transaction's write set
+   * @brief Appends a row reference to transaction write set
    *
-   * Both copy and shared flags can be ignored by provider.
+   * Both copy flag and key_type can be ignored by provider (key type
+   * interpreted as WSREP_KEY_EXCLUSIVE).
    *
-   * @param wsrep      this wsrep handle
+   * @param wsrep      provider handle
    * @param trx_handle transaction handle
    * @param keys       array of keys
    * @param keys_num   length of the array of keys
@@ -684,14 +686,14 @@ struct wsrep_ {
                                  wsrep_bool_t        copy);
 
    /*!
-    * @brief Appends data in transaction's write set
+    * @brief Appends data to transaction write set
     *
     * This method can be called any time before commit and it
     * appends data block into transaction's write set.
     *
     * Both copy and unordered flags can be ignored by provider.
     *
-    * @param wsrep      this wsrep handle
+    * @param wsrep      provider handle
     * @param trx_handle transaction handle
     * @param data       array of data buffers
     * @param count      buffer count
@@ -706,6 +708,26 @@ struct wsrep_ {
                                   wsrep_bool_t            copy,
                                   wsrep_bool_t            unordered);
 
+   /*!
+    * @brief Appends (human readable) annotation to transaction write set
+    *
+    * This method can be called any time before commit and it
+    * appends array of strings to transaction write set.
+    *
+    * Copy flag can be ignored by provider.
+    *
+    * @param wsrep      provider handle
+    * @param trx_handle transaction handle
+    * @param annotation array of annotation strings
+    * @param count      annotation string count
+    * @param copy       can be set to FALSE if data persists until commit.
+    */
+    wsrep_status_t (*annotate)(wsrep_t*             wsrep,
+                               wsrep_trx_handle_t*  trx_handle,
+                               const char*          annotation[],
+                               long                 count,
+                               wsrep_bool_t         copy);
+
   /*!
    * @brief Get causal ordering for read operation
    *
@@ -715,8 +737,8 @@ struct wsrep_ {
    * of the last transaction which is guaranteed to be ordered
    * causally before this call.
    *
-   * @param wsrep this wsrep handle
-   * @param gtid location to store GTID
+   * @param wsrep provider handle
+   * @param gtid  location to store GTID
    */
     wsrep_status_t (*causal_read)(wsrep_t* wsrep, wsrep_gtid_t* gtid);
 
@@ -728,7 +750,7 @@ struct wsrep_ {
    * connection. This call is to explicitly notify provider fo connection
    * closing.
    *
-   * @param wsrep       this wsrep handle
+   * @param wsrep       provider handle
    * @param conn_id     connection ID
    * @param query       the 'set database' query
    * @param query_len   length of query (does not end with 0)
@@ -742,7 +764,7 @@ struct wsrep_ {
    * Replicates the action spec and returns success code, which caller must
    * check. Total order isolation continues until to_execute_end() is called.
    *
-   * @param wsrep       this wsrep handle
+   * @param wsrep       provider handle
    * @param conn_id     connection ID
    * @param keys        array of keys
    * @param keys_num    lenght of the array of keys
@@ -768,7 +790,7 @@ struct wsrep_ {
    * Marks the end of total order isolation. TO locks are freed
    * and other transactions are free to commit from this point on.
    *
-   * @param wsrep this wsrep handle
+   * @param wsrep provider handle
    * @param conn_id connection ID
    *
    * @retval WSREP_OK         cluster commit succeeded
@@ -783,7 +805,7 @@ struct wsrep_ {
    * The contract is that they will be committed in the same (partial) order
    * this method was called
    *
-   * @param wsrep     this wsrep handle
+   * @param wsrep     provider handle
    * @param source_id ID of the event producer, also serves as the partial order
    *                  or stream ID - events with different source_ids won't be
    *                  ordered with respect to each other.
@@ -809,7 +831,7 @@ struct wsrep_ {
    * @brief Signals to wsrep provider that state snapshot has been sent to
    *        joiner.
    *
-   * @param wsrep  this wsrep handle
+   * @param wsrep  provider handle
    * @param uuid   sequence UUID (group UUID)
    * @param seqno  sequence number or negative error code of the operation
    */
@@ -821,7 +843,7 @@ struct wsrep_ {
    * @brief Signals to wsrep provider that new state snapshot has been received.
    *        May deadlock if called from sst_prepare_cb.
    *
-   * @param wsrep     this wsrep handle
+   * @param wsrep     provider handle
    * @param uuid      sequence UUID (group UUID)
    * @param seqno     sequence number or negative error code of the operation
    * @param state     initial state provided by SST donor
@@ -843,7 +865,7 @@ struct wsrep_ {
    * called only locally. This call will block until sst_sent is called
    * from callback.
    *
-   * @param wsrep      this wsrep handle
+   * @param wsrep      provider handle
    * @param msg        context message for SST donate callback
    * @param msg_len    length of context message
    * @param donor_spec list of snapshot donors
@@ -857,7 +879,7 @@ struct wsrep_ {
    * @brief Returns an array fo status variables.
    *        Array is terminated by Null variable name.
    *
-   * @param wsrep this wsrep handle
+   * @param wsrep provider handle
    * @return array of struct wsrep_status_var.
    */
     struct wsrep_stats_var* (*stats_get) (wsrep_t* wsrep);
@@ -865,7 +887,7 @@ struct wsrep_ {
   /*!
    * @brief Release resources that might be associated with the array.
    *
-   * @param wsrep     this wsrep handle.
+   * @param wsrep     provider handle.
    * @param var_array array returned by stats_get().
    */
     void (*stats_free) (wsrep_t* wsrep, struct wsrep_stats_var* var_array);
@@ -873,7 +895,7 @@ struct wsrep_ {
   /*!
    * @brief Reset some stats variables to inital value, provider-dependent.
    *
-   * @param wsrep this wsrep handle.
+   * @param wsrep provider handle.
    */
     void (*stats_reset) (wsrep_t* wsrep);
 
@@ -914,7 +936,7 @@ struct wsrep_ {
    * @param owner  64-bit owner ID
    * @param tout   timeout in nanoseconds.
    *               0 - return immediately, -1 wait forever.
-   * @return wsrep status or negative error code
+   * @return          wsrep status or negative error code
    * @retval -EDEADLK lock was already acquired by this thread
    * @retval -EBUSY   lock was busy
    */
@@ -925,10 +947,10 @@ struct wsrep_ {
   /*!
    * @brief Release global named lock
    *
-   * @param wsrep wsrep provider handle
-   * @param name  lock name
-   * @param owner 64-bit owner ID
-   * @return wsrep status or negative error code
+   * @param wsrep   wsrep provider handle
+   * @param name    lock name
+   * @param owner   64-bit owner ID
+   * @return        wsrep status or negative error code
    * @retval -EPERM lock does not belong to this owner
    */
     wsrep_status_t (*unlock) (wsrep_t* wsrep, const char* name, uint64_t owner);
@@ -967,7 +989,7 @@ struct wsrep_ {
 
   /*!
    * @brief Frees allocated resources before unloading the library.
-   * @param wsrep this wsrep handle
+   * @param wsrep provider handle
    */
     void (*free)(wsrep_t* wsrep);
 
