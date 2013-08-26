@@ -55,7 +55,7 @@ extern "C" {
 #define WSREP_CAP_ENCAPSULATE           ( 1ULL << 14 )
 
 /*!
- *  Write set replication flags
+ *  Writeset flags
  */
 #define WSREP_FLAG_PA_SAFE              ( 1ULL << 0 )
 #define WSREP_FLAG_COMMUTATIVE          ( 1ULL << 1 )
@@ -128,14 +128,14 @@ static const wsrep_uuid_t WSREP_UUID_UNDEFINED = {{0,}};
  * Scan UUID from string
  * @return length of UUID string representation or negative error code
  */
-extern ssize_t
+extern int
 wsrep_uuid_scan (const char* str, size_t str_len, wsrep_uuid_t* uuid);
 
 /*!
  * Print UUID to string
  * @return length of UUID string representation or negative error code
  */
-extern ssize_t
+extern int
 wsrep_uuid_print (const wsrep_uuid_t* uuid, char* str, size_t str_len);
 
 #define WSREP_MEMBER_NAME_LEN 32  //!< maximum logical member name length
@@ -163,14 +163,14 @@ static const wsrep_gtid_t WSREP_GTID_UNDEFINED = {{{0, }}, -1};
  * Scan GTID from string
  * @return length of GTID string representation or negative error code
  */
-extern ssize_t
+extern int
 wsrep_gtid_scan(const char* str, size_t str_len, wsrep_gtid_t* gtid);
 
 /*!
  * Print GTID to string
  * @return length of GTID string representation or negative error code
  */
-extern ssize_t
+extern int
 wsrep_gtid_print(const wsrep_gtid_t* gtid, char* str, size_t str_len);
 
 /*!
@@ -273,23 +273,23 @@ typedef void (*wsrep_view_cb_t) (void*                    app_ctx,
                                  const char*              state,
                                  size_t                   state_len,
                                  void**                   sst_req,
-                                 ssize_t*                 sst_req_len);
+                                 int*                     sst_req_len);
 
 /*!
  * @brief apply callback
  *
- * This handler is called from wsrep library to apply replicated write set
+ * This handler is called from wsrep library to apply replicated writeset
  * Must support brute force applying for multi-master operation
  *
  * @param recv_ctx receiver context pointer provided by the application
- * @param data     data buffer containing the write set
+ * @param data     data buffer containing the writeset
  * @param size     data buffer size
- * @param meta     transaction meta data of the write set to be applied
+ * @param meta     transaction meta data of the writeset to be applied
  *
  * @return success code:
  * @retval WSREP_OK
- * @retval WSREP_NOT_IMPLEMENTED appl. does not support the write set format
- * @retval WSREP_ERROR failed to apply the write set
+ * @retval WSREP_NOT_IMPLEMENTED appl. does not support the writeset format
+ * @retval WSREP_ERROR failed to apply the writeset
  */
 typedef enum wsrep_status (*wsrep_apply_cb_t) (
     void*                   recv_ctx,
@@ -303,7 +303,7 @@ typedef enum wsrep_status (*wsrep_apply_cb_t) (
  * This handler is called to commit the changes made by apply callback.
  *
  * @param recv_ctx receiver context pointer provided by the application
- * @param meta     transaction meta data of the write set to be committed
+ * @param meta     transaction meta data of the writeset to be committed
  * @param commit   true - commit writeset, false - rollback writeset
  *
  * @return success code:
@@ -322,7 +322,7 @@ typedef enum wsrep_status (*wsrep_commit_cb_t) (
  * to be executed in any particular order) attached to writeset.
  *
  * @param recv_ctx receiver context pointer provided by the application
- * @param data     data buffer containing the write set
+ * @param data     data buffer containing the writeset
  * @param size     data buffer size
  *
  * @return success code:
@@ -436,7 +436,7 @@ struct wsrep_stats_var
 typedef struct wsrep_buf
 {
     const void* ptr; /*!< Pointer to data buffer */
-    size_t      len; /*!< Length of buffer */
+    int         len; /*!< Length of buffer (2G max)*/
 } wsrep_buf_t;
 
 /*! Key struct used to pass certification keys for transaction handling calls.
@@ -444,12 +444,12 @@ typedef struct wsrep_buf
 typedef struct wsrep_key
 {
     const wsrep_buf_t* key_parts;     /*!< Array of key parts  */
-    long               key_parts_num; /*!< Number of key parts */
+    int                key_parts_num; /*!< Number of key parts */
 } wsrep_key_t;
 
 /*! Key type:
  *  EXCLUSIVE conflicts with any key type
- *  SEMI      reserved. If not supported, will be interpeted as EXCLUSIVE
+ *  SEMI      reserved. If not supported, should be interpeted as EXCLUSIVE
  *  SHARED    conflicts only with EXCLUSIVE keys */
 typedef enum wsrep_key_type
 {
@@ -457,6 +457,19 @@ typedef enum wsrep_key_type
     WSREP_KEY_SEMI,
     WSREP_KEY_EXCLUSIVE
 } wsrep_key_type_t;
+
+/*! Data type:
+ *  ORDERED    state modification event that should be applied and committed
+ *             in order.
+ *  UNORDERED  some action that does not modify state and execution of which is
+ *             optional and does not need to happen in order.
+ *  ANNOTATION (human readable) writeset annotation. */
+typedef enum wsrep_data_type
+{
+    WSREP_DATA_ORDERED = 0,
+    WSREP_DATA_UNORDERED,
+    WSREP_DATA_ANNOTATION
+} wsrep_data_type_t;
 
 /*! Transaction handle struct passed for wsrep transaction handling calls */
 typedef struct wsrep_ws_handle_
@@ -596,7 +609,7 @@ struct wsrep_ {
                                  wsrep_conn_id_t         conn_id,
                                  wsrep_ws_handle_t*      ws_handle,
 //                                 const struct wsrep_buf* data,
-//                                 long                    count,
+//                                 int                     count,
                                  uint64_t                flags,
                                  wsrep_trx_meta_t*       meta);
 
@@ -623,11 +636,11 @@ struct wsrep_ {
                                     wsrep_ws_handle_t*  ws_handle);
 
   /*!
-   * @brief Replay trx as a slave write set
+   * @brief Replay trx as a slave writeset
    *
    * If local trx has been aborted by brute force, and it has already
    * replicated before this abort, we must try if we can apply it as
-   * slave trx. Note that slave nodes see only trx write sets and certification
+   * slave trx. Note that slave nodes see only trx writesets and certification
    * test based on write set content can be different to DBMS lock conflicts.
    *
    * @param wsrep      provider handle
@@ -666,7 +679,7 @@ struct wsrep_ {
                                        wsrep_trx_id_t victim_trx);
 
   /*!
-   * @brief Appends a row reference to transaction write set
+   * @brief Appends a row reference to transaction writeset
    *
    * Both copy flag and key_type can be ignored by provider (key type
    * interpreted as WSREP_KEY_EXCLUSIVE).
@@ -674,22 +687,22 @@ struct wsrep_ {
    * @param wsrep      provider handle
    * @param ws_handle  writeset handle
    * @param keys       array of keys
-   * @param keys_num   length of the array of keys
-   * @param copy       can be set to FALSE if keys persist until commit.
-   * @param shared     boolean denoting if key corresponds to shared resource
+   * @param count      length of the array of keys
+   * @param type       type ot the key
+   * @param copy       can be set to FALSE if keys persist through commit.
    */
     wsrep_status_t (*append_key)(wsrep_t*            wsrep,
                                  wsrep_ws_handle_t*  ws_handle,
                                  const wsrep_key_t*  keys,
-                                 long                keys_num,
-                                 wsrep_key_type_t    key_type,
+                                 int                 count,
+                                 enum wsrep_key_type type,
                                  wsrep_bool_t        copy);
 
    /*!
-    * @brief Appends data to transaction write set
+    * @brief Appends data to transaction writeset
     *
     * This method can be called any time before commit and it
-    * appends a number of data buffers to transaction write set.
+    * appends a number of data buffers to transaction writeset.
     *
     * Both copy and unordered flags can be ignored by provider.
     *
@@ -697,36 +710,15 @@ struct wsrep_ {
     * @param ws_handle  writeset handle
     * @param data       array of data buffers
     * @param count      buffer count
-    * @param copy       can be set to FALSE if data persists until commit.
-    * @param unordered  can be set to TRUE if this part of the write set
-    *                   executed out of order.
+    * @param type       type of data
+    * @param copy       can be set to FALSE if data persists through commit.
     */
     wsrep_status_t (*append_data)(wsrep_t*                wsrep,
                                   wsrep_ws_handle_t*      ws_handle,
                                   const struct wsrep_buf* data,
-                                  long                    count,
-                                  wsrep_bool_t            copy,
-                                  wsrep_bool_t            unordered);
-
-   /*!
-    * @brief Appends (human readable) annotation to transaction write set
-    *
-    * This method can be called any time before commit and it
-    * appends array of strings to transaction write set.
-    *
-    * Copy flag can be ignored by provider.
-    *
-    * @param wsrep      provider handle
-    * @param ws_handle  writeset handle
-    * @param annotation array of annotation strings
-    * @param count      annotation string count
-    * @param copy       can be set to FALSE if data persists until commit.
-    */
-    wsrep_status_t (*annotate)(wsrep_t*             wsrep,
-                               wsrep_ws_handle_t*   ws_handle,
-                               const char*          annotation[],
-                               long                 count,
-                               wsrep_bool_t         copy);
+                                  int                     count,
+                                  enum wsrep_data_type    type,
+                                  wsrep_bool_t            copy);
 
   /*!
    * @brief Get causal ordering for read operation
@@ -779,9 +771,9 @@ struct wsrep_ {
     wsrep_status_t (*to_execute_start)(wsrep_t*                wsrep,
                                        wsrep_conn_id_t         conn_id,
                                        const wsrep_key_t*      keys,
-                                       long                    keys_num,
+                                       int                     keys_num,
                                        const struct wsrep_buf* action,
-                                       long                    count,
+                                       int                     count,
                                        wsrep_trx_meta_t*       meta);
 
   /*!
@@ -824,7 +816,7 @@ struct wsrep_ {
                                  const wsrep_uuid_t*     source_id,
                                  int                     pa_range,
                                  const struct wsrep_buf* data,
-                                 long                    count,
+                                 int                     count,
                                  wsrep_bool_t            copy);
 
   /*!
@@ -872,7 +864,7 @@ struct wsrep_ {
    */
     wsrep_status_t (*snapshot)(wsrep_t*    wsrep,
                                const void* msg,
-                               size_t      msg_len,
+                               int         msg_len,
                                const char* donor_spec);
 
   /*!
