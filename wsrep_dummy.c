@@ -211,6 +211,7 @@ static wsrep_status_t dummy_preordered(
     int                     pa_range  __attribute__((unused)),
     const struct wsrep_buf* data      __attribute__((unused)),
     int                     count     __attribute__((unused)),
+    uint64_t                flags     __attribute__((unused)),
     wsrep_bool_t            copy      __attribute__((unused)))
 {
     WSREP_DBUG_ENTER(w);

@@ -56,9 +56,24 @@ extern "C" {
 
 /*!
  *  Writeset flags
+ *
+ * COMMIT       the writeset and all preceding writesets must be committed
+ * ROLLBACK     all preceding writesets in a transaction must be rolled back
+ * PA_UNSAFE    the writeset cannot be applied in parallel
+ * ISOLATION    the writeset must be applied AND committed in isolation
+ * COMMUTATIVE  the order in which the writeset is applied does not matter
+ * NATIVE       the writeset contains another writeset in this provider format
+ *
+ * Note that some of the flags are mutually exclusive (e.g. COMMIT and
+ * ROLLBACK).
  */
-#define WSREP_FLAG_PA_SAFE              ( 1ULL << 0 )
-#define WSREP_FLAG_COMMUTATIVE          ( 1ULL << 1 )
+#define WSREP_FLAG_COMMIT               ( 1ULL << 0 )
+#define WSREP_FLAG_ROLLBACK             ( 1ULL << 1 )
+#define WSREP_FLAG_PA_UNSAFE            ( 1ULL << 3 )
+#define WSREP_FLAG_ISOLATION            ( 1ULL << 2 )
+#define WSREP_FLAG_COMMUTATIVE          ( 1ULL << 4 )
+#define WSREP_FLAG_NATIVE               ( 1ULL << 5 )
+
 
 typedef uint64_t wsrep_trx_id_t;  //!< application transaction ID
 typedef uint64_t wsrep_conn_id_t; //!< application connection ID
@@ -698,21 +713,21 @@ struct wsrep_ {
                                  enum wsrep_key_type type,
                                  wsrep_bool_t        copy);
 
-   /*!
-    * @brief Appends data to transaction writeset
-    *
-    * This method can be called any time before commit and it
-    * appends a number of data buffers to transaction writeset.
-    *
-    * Both copy and unordered flags can be ignored by provider.
-    *
-    * @param wsrep      provider handle
-    * @param ws_handle  writeset handle
-    * @param data       array of data buffers
-    * @param count      buffer count
-    * @param type       type of data
-    * @param copy       can be set to FALSE if data persists through commit.
-    */
+  /*!
+   * @brief Appends data to transaction writeset
+   *
+   * This method can be called any time before commit and it
+   * appends a number of data buffers to transaction writeset.
+   *
+   * Both copy and unordered flags can be ignored by provider.
+   *
+   * @param wsrep      provider handle
+   * @param ws_handle  writeset handle
+   * @param data       array of data buffers
+   * @param count      buffer count
+   * @param type       type of data
+   * @param copy       can be set to FALSE if data persists through commit.
+   */
     wsrep_status_t (*append_data)(wsrep_t*                wsrep,
                                   wsrep_ws_handle_t*      ws_handle,
                                   const struct wsrep_buf* data,
@@ -806,7 +821,8 @@ struct wsrep_ {
    *                  processing. Note: commits always happend in wsrep order.
    * @param data      an array of data buffers.
    * @param count     length of data buffer array.
-   * @param copy      whether provider needs to make a copy of event
+   * @param flags     WSREP_FLAG_... flags
+   * @param copy      whether provider needs to make a copy of event.
    *
    * @retval WSREP_OK         cluster commit succeeded
    * @retval WSREP_CONN_FAIL  must close client connection
@@ -817,6 +833,7 @@ struct wsrep_ {
                                  int                     pa_range,
                                  const struct wsrep_buf* data,
                                  int                     count,
+                                 uint64_t                flags,
                                  wsrep_bool_t            copy);
 
   /*!
