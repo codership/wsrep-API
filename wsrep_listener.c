@@ -50,18 +50,18 @@ logger_cb (wsrep_log_level_t level __attribute__((unused)), const char* msg)
  *  Each view change is the point where application may be pronounced out of
  *  sync with the current cluster view and need state transfer.
  *  It is guaranteed that no other callbacks are called concurrently with it. */
-static void
+static wsrep_cb_status_t
 view_cb (void*                    app_ctx   __attribute__((unused)),
          void*                    recv_ctx  __attribute__((unused)),
          const wsrep_view_info_t* view,
          const char*              state     __attribute__((unused)),
          size_t                   state_len __attribute__((unused)),
          void**                   sst_req,
-         ssize_t*                 sst_req_len)
+         int*                     sst_req_len)
 {
     printf ("New cluster membership view: %d nodes, my index is %d, "
             "global seqno: %lld\n",
-            view->memb_num, view->my_idx, (long long)view->seqno);
+            view->memb_num, view->my_idx, (long long)view->state_id.seqno);
 
     if (view->state_gap) /* we need to receive new state from the cluster */
     {
@@ -76,12 +76,14 @@ view_cb (void*                    app_ctx   __attribute__((unused)),
         else
             *sst_req_len = -ENOMEM;
     }
+
+    return WSREP_CB_SUCCESS;
 }
 
 /*! This is called to "apply" writeset.
  *  If writesets don't conflict on keys, it may be called concurrently to
  *  utilize several CPU cores. */
-static wsrep_status_t
+static wsrep_cb_status_t
 apply_cb (void*                   recv_ctx,
           const void*             ws_data __attribute__((unused)),
           size_t                  ws_size,
@@ -93,14 +95,14 @@ apply_cb (void*                   recv_ctx,
               "Got writeset %lld, size %zu", (long long)meta->gtid.seqno,
               ws_size);
 
-    return WSREP_OK;
+    return WSREP_CB_SUCCESS;
 }
 
 /*! This is called to "commit" or "rollback" previously applied writeset,
  *  depending on commit parameter.
  *  By default this callback is called synchronously in the order determined
  *  by seqno. */
-static wsrep_status_t
+static wsrep_cb_status_t
 commit_cb (void*                   recv_ctx,
            const wsrep_trx_meta_t* meta __attribute__((unused)),
            wsrep_bool_t            commit)
@@ -111,7 +113,7 @@ commit_cb (void*                   recv_ctx,
      * we don't need to worry about exclusive access to stdout. */
     if (commit) puts(ctx->msg);
 
-    return WSREP_OK;
+    return WSREP_CB_SUCCESS;
 }
 
 /* The following callbacks are stubs and not used in this example. */
@@ -120,8 +122,7 @@ sst_donate_cb (void*               app_ctx   __attribute__((unused)),
                void*               recv_ctx  __attribute__((unused)),
                const void*         msg       __attribute__((unused)),
                size_t              msg_len   __attribute__((unused)),
-               const wsrep_uuid_t* uuid      __attribute__((unused)),
-               wsrep_seqno_t       seqno     __attribute__((unused)),
+               const wsrep_gtid_t* state_id  __attribute__((unused)),
                const char*         state     __attribute__((unused)),
                size_t              state_len __attribute__((unused)),
                wsrep_bool_t        bypass    __attribute__((unused)))
@@ -176,6 +177,8 @@ int main (int argc, char* argv[])
         exit (EXIT_FAILURE);
     }
 
+    wsrep_gtid_t state_id = { WSREP_UUID_UNDEFINED, WSREP_SEQNO_UNDEFINED };
+
     /* wsrep provider initialization arguments */
     struct wsrep_init_args wsrep_args =
     {
@@ -188,8 +191,7 @@ int main (int argc, char* argv[])
         .options       = "",
         .proto_ver     = 127, // maximum supported application event protocol
 
-        .state_uuid    = &WSREP_UUID_UNDEFINED,
-        .state_seqno   = WSREP_SEQNO_UNDEFINED,
+        .state_id      = &state_id,
         .state         = NULL,
         .state_len     = 0,
 
