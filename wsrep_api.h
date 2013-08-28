@@ -30,7 +30,7 @@ extern "C" {
  *  wsrep replication API
  */
 
-#define WSREP_INTERFACE_VERSION "24dev"
+#define WSREP_INTERFACE_VERSION "24rc1"
 
 /*! Empty backend spec */
 #define WSREP_NONE "none"
