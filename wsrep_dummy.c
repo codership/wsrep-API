@@ -220,7 +220,8 @@ static wsrep_status_t dummy_preordered(
 
 static wsrep_status_t dummy_sst_sent(
     wsrep_t* w,
-    const wsrep_gtid_t* state_id __attribute__((unused)))
+    const wsrep_gtid_t* state_id  __attribute__((unused)),
+    const int           rcode     __attribute__((unused)))
 {
     WSREP_DBUG_ENTER(w);
     return WSREP_OK;

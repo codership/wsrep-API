@@ -855,9 +855,11 @@ struct wsrep_ {
    *
    * @param wsrep    provider handle
    * @param state_id state ID
+   * @param rcode    0 or negative error code of the operation.
    */
     wsrep_status_t (*sst_sent)(wsrep_t*            wsrep,
-                               const wsrep_gtid_t* state_id);
+                               const wsrep_gtid_t* state_id,
+                               int                 rcode);
 
   /*!
    * @brief Signals to wsrep provider that new state snapshot has been received.
