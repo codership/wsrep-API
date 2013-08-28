@@ -873,7 +873,7 @@ struct wsrep_ {
    */
     wsrep_status_t (*sst_received)(wsrep_t*            wsrep,
                                    const wsrep_gtid_t* state_id,
-                                   const char*         state,
+                                   const void*         state,
                                    size_t              state_len,
                                    int                 rcode);
 

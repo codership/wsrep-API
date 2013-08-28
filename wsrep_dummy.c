@@ -230,7 +230,7 @@ static wsrep_status_t dummy_sst_sent(
 static wsrep_status_t dummy_sst_received(
     wsrep_t* w,
     const wsrep_gtid_t* state_id  __attribute__((unused)),
-    const char*         state     __attribute__((unused)),
+    const void*         state     __attribute__((unused)),
     const size_t        state_len __attribute__((unused)),
     const int           rcode     __attribute__((unused)))
 {
