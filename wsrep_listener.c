@@ -57,7 +57,7 @@ view_cb (void*                    app_ctx   __attribute__((unused)),
          const char*              state     __attribute__((unused)),
          size_t                   state_len __attribute__((unused)),
          void**                   sst_req,
-         int*                     sst_req_len)
+         size_t*                  sst_req_len)
 {
     printf ("New cluster membership view: %d nodes, my index is %d, "
             "global seqno: %lld\n",
@@ -105,6 +105,7 @@ apply_cb (void*                   recv_ctx,
 static wsrep_cb_status_t
 commit_cb (void*                   recv_ctx,
            const wsrep_trx_meta_t* meta __attribute__((unused)),
+           wsrep_bool_t*           exit __attribute__((unused)),
            wsrep_bool_t            commit)
 {
     struct receiver_context* ctx = (struct receiver_context*)recv_ctx;
@@ -117,7 +118,7 @@ commit_cb (void*                   recv_ctx,
 }
 
 /* The following callbacks are stubs and not used in this example. */
-static int
+static wsrep_cb_status_t
 sst_donate_cb (void*               app_ctx   __attribute__((unused)),
                void*               recv_ctx  __attribute__((unused)),
                const void*         msg       __attribute__((unused)),
@@ -126,7 +127,9 @@ sst_donate_cb (void*               app_ctx   __attribute__((unused)),
                const char*         state     __attribute__((unused)),
                size_t              state_len __attribute__((unused)),
                wsrep_bool_t        bypass    __attribute__((unused)))
-{ return 0; }
+{
+    return WSREP_CB_SUCCESS;
+}
 
 static void synced_cb (void* app_ctx __attribute__((unused))) {}
 
@@ -146,7 +149,7 @@ recv_thread (void* arg)
     fprintf (stderr, "Receiver exited with code %d", rc);
 
     return NULL;
-} 
+}
 
 /* This is a signal handler to demonstrate graceful cluster leave. */
 static void
