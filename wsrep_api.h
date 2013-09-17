@@ -18,6 +18,7 @@
 #define WSREP_H
 
 #include <stdint.h>
+#include <stdbool.h>
 #include <stdlib.h>
 #include <unistd.h>
 #include <time.h>
@@ -106,11 +107,7 @@ typedef void (*wsrep_log_cb_t)(wsrep_log_level_t, const char *);
 typedef uint64_t wsrep_trx_id_t;  //!< application transaction ID
 typedef uint64_t wsrep_conn_id_t; //!< application connection ID
 typedef int64_t  wsrep_seqno_t;   //!< sequence number of a writeset, etc.
-#ifdef __cplusplus
-typedef bool     wsrep_bool_t;
-#else
-typedef _Bool    wsrep_bool_t;    //!< should be the same as standard bool
-#endif
+typedef _Bool    wsrep_bool_t;    //!< should be the same as standard (C99) bool
 
 /*! undefined seqno */
 #define WSREP_SEQNO_UNDEFINED (-1)
