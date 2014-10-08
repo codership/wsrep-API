@@ -87,6 +87,7 @@ static wsrep_cb_status_t
 apply_cb (void*                   recv_ctx,
           const void*             ws_data __attribute__((unused)),
           size_t                  ws_size,
+          uint32_t                flags __attribute__((unused)),
           const wsrep_trx_meta_t* meta)
 {
     struct receiver_context* ctx = (struct receiver_context*)recv_ctx;
@@ -104,6 +105,7 @@ apply_cb (void*                   recv_ctx,
  *  by seqno. */
 static wsrep_cb_status_t
 commit_cb (void*                   recv_ctx,
+           uint32_t                flags __attribute((unused)),
            const wsrep_trx_meta_t* meta __attribute__((unused)),
            wsrep_bool_t*           exit __attribute__((unused)),
            wsrep_bool_t            commit)
