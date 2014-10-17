@@ -343,6 +343,14 @@ typedef enum wsrep_cb_status (*wsrep_view_cb_t) (
     size_t*                  sst_req_len
 );
 
+/*!
+ * Identifier for transaction, processing in source node
+ */
+typedef struct wsrep_src_trx {
+  wsrep_uuid_t      uuid;    //!< group-wide unique member ID
+  wsrep_trx_id_t    trx;     //!< local trx ID in source node
+} wsrep_src_trx_t;
+
 
 /*!
  * @brief apply callback
@@ -355,6 +363,7 @@ typedef enum wsrep_cb_status (*wsrep_view_cb_t) (
  * @param size     data buffer size
  * @param flags    WSREP_FLAG_... flags
  * @param meta     transaction meta data of the writeset to be applied
+ * @param src_trx  transaction identifier in source node
  *
  * @return success code:
  * @retval WSREP_OK
@@ -366,7 +375,8 @@ typedef enum wsrep_cb_status (*wsrep_apply_cb_t) (
     const void*             data,
     size_t                  size,
     uint32_t                flags,
-    const wsrep_trx_meta_t* meta
+    const wsrep_trx_meta_t* meta,
+    wsrep_src_trx_t         src_trx
 );
 
 
