@@ -240,13 +240,23 @@ wsrep_gtid_print(const wsrep_gtid_t* gtid, char* str, size_t str_len);
 
 
 /*!
+ * Identifier for transaction, processing in source node
+ */
+typedef struct wsrep_src_trx {
+  wsrep_uuid_t      uuid;    //!< group-wide unique member ID
+  wsrep_trx_id_t    trx;     //!< local trx ID in source node
+} wsrep_src_trx_t;
+
+
+/*!
  * Transaction meta data
  */
 typedef struct wsrep_trx_meta
 {
-    wsrep_gtid_t  gtid;       /*!< Global transaction identifier */
-    wsrep_seqno_t depends_on; /*!< Sequence number part of the last transaction
-                                   this transaction depends on */
+    wsrep_gtid_t    gtid;       /*!< Global transaction identifier */
+    wsrep_seqno_t   depends_on; /*!< Sequence number part of the last 
+                                   transaction this transaction depends on */
+    wsrep_src_trx_t src_trx;    /*!< transaction ID in source node */
 } wsrep_trx_meta_t;
 
 
@@ -344,15 +354,6 @@ typedef enum wsrep_cb_status (*wsrep_view_cb_t) (
 );
 
 /*!
- * Identifier for transaction, processing in source node
- */
-typedef struct wsrep_src_trx {
-  wsrep_uuid_t      uuid;    //!< group-wide unique member ID
-  wsrep_trx_id_t    trx;     //!< local trx ID in source node
-} wsrep_src_trx_t;
-
-
-/*!
  * @brief apply callback
  *
  * This handler is called from wsrep library to apply replicated writeset
@@ -375,8 +376,7 @@ typedef enum wsrep_cb_status (*wsrep_apply_cb_t) (
     const void*             data,
     size_t                  size,
     uint32_t                flags,
-    const wsrep_trx_meta_t* meta,
-    wsrep_src_trx_t         src_trx
+    const wsrep_trx_meta_t* meta
 );
 
 
