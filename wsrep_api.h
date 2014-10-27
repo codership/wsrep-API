@@ -63,7 +63,7 @@ extern "C" {
  *                                                                        *
  **************************************************************************/
 
-#define WSREP_INTERFACE_VERSION "25"
+#define WSREP_INTERFACE_VERSION "25sr"
 
 /*! Empty backend spec */
 #define WSREP_NONE "none"
@@ -238,6 +238,13 @@ wsrep_gtid_scan(const char* str, size_t str_len, wsrep_gtid_t* gtid);
 extern int
 wsrep_gtid_print(const wsrep_gtid_t* gtid, char* str, size_t str_len);
 
+/*!
+ * Source/server transaction ID (trx ID assigned at originating node)
+ */
+typedef struct wsrep_stid {
+    wsrep_uuid_t      node;    //!< source node ID
+    wsrep_trx_id_t    trx;     //!< local trx ID at source
+} wsrep_stid_t;
 
 /*!
  * Transaction meta data
@@ -245,8 +252,9 @@ wsrep_gtid_print(const wsrep_gtid_t* gtid, char* str, size_t str_len);
 typedef struct wsrep_trx_meta
 {
     wsrep_gtid_t  gtid;       /*!< Global transaction identifier */
-    wsrep_seqno_t depends_on; /*!< Sequence number part of the last transaction
-                                   this transaction depends on */
+    wsrep_stid_t  stid;       /*!< Source transaction identifier */
+    wsrep_seqno_t depends_on; /*!< Sequence number of the last transaction
+                                   this transaction may depend on */
 } wsrep_trx_meta_t;
 
 
@@ -343,13 +351,6 @@ typedef enum wsrep_cb_status (*wsrep_view_cb_t) (
     size_t*                  sst_req_len
 );
 
-/*!
- * Identifier for transaction, processing in source node
- */
-typedef struct wsrep_src_trx {
-  wsrep_uuid_t      uuid;    //!< group-wide unique member ID
-  wsrep_trx_id_t    trx;     //!< local trx ID in source node
-} wsrep_src_trx_t;
 
 
 /*!
@@ -363,7 +364,6 @@ typedef struct wsrep_src_trx {
  * @param size     data buffer size
  * @param flags    WSREP_FLAG_... flags
  * @param meta     transaction meta data of the writeset to be applied
- * @param src_trx  transaction identifier in source node
  *
  * @return success code:
  * @retval WSREP_OK
@@ -375,8 +375,7 @@ typedef enum wsrep_cb_status (*wsrep_apply_cb_t) (
     const void*             data,
     size_t                  size,
     uint32_t                flags,
-    const wsrep_trx_meta_t* meta,
-    wsrep_src_trx_t         src_trx
+    const wsrep_trx_meta_t* meta
 );
 
 
