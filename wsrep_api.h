@@ -352,7 +352,6 @@ typedef enum wsrep_cb_status (*wsrep_view_cb_t) (
 );
 
 
-
 /*!
  * @brief apply callback
  *
