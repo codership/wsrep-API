@@ -105,13 +105,13 @@ apply_cb (void*                   recv_ctx,
  *  by seqno. */
 static wsrep_cb_status_t
 commit_cb (void*                   recv_ctx,
-           uint32_t                flags __attribute((unused)),
+           uint32_t                flags,
            const wsrep_trx_meta_t* meta __attribute__((unused)),
-           wsrep_bool_t*           exit __attribute__((unused)),
-           wsrep_bool_t            commit)
+           wsrep_bool_t*           exit __attribute__((unused)))
 {
     struct receiver_context* ctx = (struct receiver_context*)recv_ctx;
 
+    bool const commit = flags & (WSREP_FLAG_TRX_END | WSREP_FLAG_ROLLBACK);
     /* Here we just print it to stdout. Since this callback is synchronous
      * we don't need to worry about exclusive access to stdout. */
     if (commit) puts(ctx->msg);
