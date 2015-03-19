@@ -55,27 +55,33 @@ view_cb (void*                    app_ctx   __attribute__((unused)),
          void*                    recv_ctx  __attribute__((unused)),
          const wsrep_view_info_t* view,
          const char*              state     __attribute__((unused)),
-         size_t                   state_len __attribute__((unused)),
-         void**                   sst_req,
-         size_t*                  sst_req_len)
+         size_t                   state_len __attribute__((unused)))
 {
     printf ("New cluster membership view: %d nodes, my index is %d, "
             "global seqno: %lld\n",
             view->memb_num, view->my_idx, (long long)view->state_id.seqno);
 
-    if (view->state_gap) /* we need to receive new state from the cluster */
-    {
-        /* For simplicity we're skipping state transfer by using magic string
-         * as a state transfer request.
-         * This node will not be considered JOINED (having full state)
-         * by other cluster members. */
-        *sst_req = strdup(WSREP_STATE_TRANSFER_NONE);
+    return WSREP_CB_SUCCESS;
+}
 
-        if (*sst_req)
-            *sst_req_len = strlen(*sst_req) + 1;
-        else
-            *sst_req_len = -ENOMEM;
-    }
+/*! This will be called on cluster view change (nodes joining, leaving, etc.).
+ *  Each view change is the point where application may be pronounced out of
+ *  sync with the current cluster view and need state transfer.
+ *  It is guaranteed that no other callbacks are called concurrently with it. */
+static wsrep_cb_status_t
+sst_request_cb (void**            sst_req,
+                size_t*           sst_req_len)
+{
+    /* For simplicity we're skipping state transfer by using magic string
+     * as a state transfer request.
+     * This node will not be considered JOINED (having full state)
+     * by other cluster members. */
+    *sst_req = strdup(WSREP_STATE_TRANSFER_NONE);
+
+    if (*sst_req)
+        *sst_req_len = strlen(*sst_req) + 1;
+    else
+        *sst_req_len = -ENOMEM;
 
     return WSREP_CB_SUCCESS;
 }
@@ -105,13 +111,13 @@ apply_cb (void*                   recv_ctx,
  *  by seqno. */
 static wsrep_cb_status_t
 commit_cb (void*                   recv_ctx,
-           uint32_t                flags __attribute((unused)),
+           uint32_t                flags,
            const wsrep_trx_meta_t* meta __attribute__((unused)),
-           wsrep_bool_t*           exit __attribute__((unused)),
-           wsrep_bool_t            commit)
+           wsrep_bool_t*           exit __attribute__((unused)))
 {
     struct receiver_context* ctx = (struct receiver_context*)recv_ctx;
 
+    bool const commit = flags & (WSREP_FLAG_TRX_END | WSREP_FLAG_ROLLBACK);
     /* Here we just print it to stdout. Since this callback is synchronous
      * we don't need to worry about exclusive access to stdout. */
     if (commit) puts(ctx->msg);
@@ -200,12 +206,13 @@ int main (int argc, char* argv[])
         .state         = NULL,
         .state_len     = 0,
 
-        .logger_cb       = logger_cb,
-        .view_handler_cb = view_cb,
-        .apply_cb        = apply_cb,
-        .commit_cb       = commit_cb,
-        .sst_donate_cb   = sst_donate_cb,
-        .synced_cb       = synced_cb
+        .logger_cb      = logger_cb,
+        .view_cb        = view_cb,
+        .sst_request_cb = sst_request_cb,
+        .apply_cb       = apply_cb,
+        .commit_cb      = commit_cb,
+        .sst_donate_cb  = sst_donate_cb,
+        .synced_cb      = synced_cb
     };
 
     rc = wsrep->init(wsrep, &wsrep_args);
