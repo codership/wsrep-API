@@ -111,7 +111,7 @@ typedef void (*wsrep_log_cb_t)(wsrep_log_level_t, const char *);
 #define WSREP_CAP_UNORDERED             ( 1ULL << 12 )
 #define WSREP_CAP_ANNOTATION            ( 1ULL << 13 )
 #define WSREP_CAP_PREORDERED            ( 1ULL << 14 )
-
+#define WSREP_CAP_SNAPSHOT              ( 1ULL << 15 )
 
 /*!
  *  Writeset flags
@@ -135,6 +135,7 @@ typedef void (*wsrep_log_cb_t)(wsrep_log_level_t, const char *);
 #define WSREP_FLAG_COMMUTATIVE          ( 1ULL << 4 )
 #define WSREP_FLAG_NATIVE               ( 1ULL << 5 )
 #define WSREP_FLAG_TRX_START            ( 1ULL << 6 )
+#define WSREP_FLAG_SNAPSHOT             ( 1ULL << 7 )
 
 #define WSREP_FLAGS_LAST                WSREP_FLAG_TRX_START
 #define WSREP_FLAGS_MASK                ((WSREP_FLAGS_LAST << 1) - 1)
