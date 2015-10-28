@@ -388,12 +388,11 @@ typedef enum wsrep_cb_status (*wsrep_sst_request_cb_t) (
  * @param flags    WSREP_FLAG_... flags
  * @param meta     transaction meta data of the writeset to be applied
  *
- * @return success code:
- * @retval WSREP_OK
- * @retval WSREP_NOT_IMPLEMENTED appl. does not support the writeset format
- * @retval WSREP_ERROR failed to apply the writeset
+ * @return error code:
+ * @retval 0 - success
+ * @retval non-0 - application-specific error code
  */
-typedef enum wsrep_cb_status (*wsrep_apply_cb_t) (
+typedef int (*wsrep_apply_cb_t) (
     void*                     recv_ctx,
     const void*               data,
     size_t                    size,
@@ -414,8 +413,8 @@ typedef enum wsrep_cb_status (*wsrep_apply_cb_t) (
  * @param commit   true - commit writeset, false - rollback writeset
  *
  * @return success code:
- * @retval WSREP_OK
- * @retval WSREP_ERROR call failed
+ * @retval WSREP_CB_SUCCESS
+ * @retval WSREP_CB_FAILURE
  */
 typedef enum wsrep_cb_status (*wsrep_commit_cb_t) (
     void*                   recv_ctx,
@@ -901,12 +900,15 @@ struct wsrep {
    *
    * @param wsrep provider handle
    * @param conn_id connection ID
+   * @param err TOI operation error code (same as return code of apply_cb())
    *
    * @retval WSREP_OK         cluster commit succeeded
    * @retval WSREP_CONN_FAIL  must close client connection
    * @retval WSREP_NODE_FAIL  must close all connections and reinit
    */
-    wsrep_status_t (*to_execute_end)(wsrep_t* wsrep, wsrep_conn_id_t conn_id);
+    wsrep_status_t (*to_execute_end)(wsrep_t*        wsrep,
+                                     wsrep_conn_id_t conn_id,
+                                     int             err);
 
   /*!
    * @brief Collects preordered replication events into a writeset.
