@@ -704,6 +704,18 @@ struct wsrep {
     wsrep_status_t (*recv)(wsrep_t* wsrep, void* recv_ctx);
 
   /*!
+   * @brief Tells provider that a given writeset has a read view associated
+   *        with it.
+   *
+   * @param wsrep  provider handle
+   * @param handle writeet handle
+   * @param rv     read view astablished by the caller or if NULL, by provider
+   */
+    wsrep_status_t (*assign_read_view)(wsrep_t*            wsrep,
+                                       wsrep_ws_handle_t*  handle,
+                                       const wsrep_gtid_t* rv);
+
+  /*!
    * @brief Replicates/logs result of transaction to other nodes and allocates
    * required resources.
    *
@@ -900,7 +912,7 @@ struct wsrep {
    *
    * @param wsrep provider handle
    * @param conn_id connection ID
-   * @param err TOI operation error code (same as return code of apply_cb())
+   * @param rcode TOI operation error code (same as return code of apply_cb())
    *
    * @retval WSREP_OK         cluster commit succeeded
    * @retval WSREP_CONN_FAIL  must close client connection
@@ -908,7 +920,7 @@ struct wsrep {
    */
     wsrep_status_t (*to_execute_end)(wsrep_t*        wsrep,
                                      wsrep_conn_id_t conn_id,
-                                     int             err);
+                                     int             rcode);
 
   /*!
    * @brief Collects preordered replication events into a writeset.

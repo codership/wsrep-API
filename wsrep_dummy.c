@@ -97,6 +97,15 @@ static wsrep_status_t dummy_recv(wsrep_t* w,
     return WSREP_OK;
 }
 
+static wsrep_status_t dummy_assign_read_view(
+    wsrep_t* w,
+    wsrep_ws_handle_t*      ws_handle  __attribute__((unused)),
+    const wsrep_gtid_t*     rv         __attribute__((unused)))
+{
+    WSREP_DBUG_ENTER(w);
+    return WSREP_OK;
+}
+
 static wsrep_status_t dummy_pre_commit(
     wsrep_t* w,
     const wsrep_conn_id_t   conn_id    __attribute__((unused)),
@@ -339,6 +348,7 @@ static wsrep_t dummy_iface = {
     &dummy_connect,
     &dummy_disconnect,
     &dummy_recv,
+    &dummy_assign_read_view,
     &dummy_pre_commit,
     &dummy_post_commit,
     &dummy_post_rollback,
