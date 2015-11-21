@@ -20,11 +20,13 @@
 
 #include <errno.h>
 #include <stdbool.h>
+#include <string.h>
 
 /*! Dummy backend context. */
 typedef struct wsrep_dummy
 {
     wsrep_log_cb_t log_fn;
+    char* options;
 } wsrep_dummy_t;
 
 /* Get pointer to wsrep_dummy context from wsrep_t pointer */
@@ -42,6 +44,10 @@ typedef struct wsrep_dummy
 static void dummy_free(wsrep_t *w)
 {
     WSREP_DBUG_ENTER(w);
+    if (WSREP_DUMMY(w)->options) {
+        free(WSREP_DUMMY(w)->options);
+        WSREP_DUMMY(w)->options = NULL;
+    }
     free(w->ctx);
     w->ctx = NULL;
 }
@@ -51,6 +57,9 @@ static wsrep_status_t dummy_init (wsrep_t* w,
 {
     WSREP_DUMMY(w)->log_fn = args->logger_cb;
     WSREP_DBUG_ENTER(w);
+    if (args->options) {
+        WSREP_DUMMY(w)->options = strdup(args->options);
+    }
     return WSREP_OK;
 }
 
@@ -61,16 +70,23 @@ static uint64_t dummy_capabilities (wsrep_t* w __attribute__((unused)))
 
 static wsrep_status_t dummy_options_set(
     wsrep_t* w,
-    const char* conf __attribute__((unused)))
+    const char* conf)
 {
     WSREP_DBUG_ENTER(w);
+    if (WSREP_DUMMY(w)->options) {
+        free(WSREP_DUMMY(w)->options);
+        WSREP_DUMMY(w)->options = NULL;
+    }
+    if (conf) {
+        WSREP_DUMMY(w)->options = strdup(conf);
+    }
     return WSREP_OK;
 }
 
 static char* dummy_options_get (wsrep_t* w)
 {
     WSREP_DBUG_ENTER(w);
-    return NULL;
+    return WSREP_DUMMY(w)->options;
 }
 
 static wsrep_status_t dummy_connect(
@@ -92,6 +108,15 @@ static wsrep_status_t dummy_disconnect(wsrep_t* w)
 
 static wsrep_status_t dummy_recv(wsrep_t* w,
                                  void*    recv_ctx __attribute__((unused)))
+{
+    WSREP_DBUG_ENTER(w);
+    return WSREP_OK;
+}
+
+static wsrep_status_t dummy_assign_read_view(
+    wsrep_t* w,
+    wsrep_ws_handle_t*      ws_handle  __attribute__((unused)),
+    const wsrep_gtid_t*     rv         __attribute__((unused)))
 {
     WSREP_DBUG_ENTER(w);
     return WSREP_OK;
@@ -197,7 +222,8 @@ static wsrep_status_t dummy_to_execute_start(
 
 static wsrep_status_t dummy_to_execute_end(
     wsrep_t* w,
-    const wsrep_conn_id_t  conn_id   __attribute__((unused)))
+    const wsrep_conn_id_t  conn_id   __attribute__((unused)),
+    int                    err       __attribute__((unused)))
 {
     WSREP_DBUG_ENTER(w);
     return WSREP_OK;
@@ -338,6 +364,7 @@ static wsrep_t dummy_iface = {
     &dummy_connect,
     &dummy_disconnect,
     &dummy_recv,
+    &dummy_assign_read_view,
     &dummy_pre_commit,
     &dummy_post_commit,
     &dummy_post_rollback,
@@ -385,7 +412,7 @@ int wsrep_dummy_loader(wsrep_t* w)
 
     // initialize private context
     WSREP_DUMMY(w)->log_fn = NULL;
+    WSREP_DUMMY(w)->options = NULL;
 
     return 0;
 }
-

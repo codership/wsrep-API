@@ -89,7 +89,7 @@ sst_request_cb (void**            sst_req,
 /*! This is called to "apply" writeset.
  *  If writesets don't conflict on keys, it may be called concurrently to
  *  utilize several CPU cores. */
-static wsrep_cb_status_t
+static int
 apply_cb (void*                   recv_ctx,
           const void*             ws_data __attribute__((unused)),
           size_t                  ws_size,
@@ -102,7 +102,7 @@ apply_cb (void*                   recv_ctx,
               "Got writeset %lld, size %zu", (long long)meta->gtid.seqno,
               ws_size);
 
-    return WSREP_CB_SUCCESS;
+    return 0;
 }
 
 /*! This is called to "commit" or "rollback" previously applied writeset,
