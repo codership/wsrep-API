@@ -191,7 +191,16 @@ static wsrep_status_t dummy_append_data(
     return WSREP_OK;
 }
 
-static wsrep_status_t dummy_causal_read(
+static wsrep_status_t dummy_sync_wait(
+    wsrep_t* w,
+    wsrep_gtid_t* upto __attribute__((unused)),
+    wsrep_gtid_t* gtid __attribute__((unused)))
+{
+    WSREP_DBUG_ENTER(w);
+    return WSREP_OK;
+}
+
+static wsrep_status_t dummy_last_committed_id(
     wsrep_t* w,
     wsrep_gtid_t* gtid __attribute__((unused)))
 {
@@ -372,7 +381,8 @@ static wsrep_t dummy_iface = {
     &dummy_abort_pre_commit,
     &dummy_append_key,
     &dummy_append_data,
-    &dummy_causal_read,
+    &dummy_sync_wait,
+    &dummy_last_committed_id,
     &dummy_free_connection,
     &dummy_to_execute_start,
     &dummy_to_execute_end,
