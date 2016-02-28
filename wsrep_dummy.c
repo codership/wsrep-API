@@ -194,6 +194,7 @@ static wsrep_status_t dummy_append_data(
 static wsrep_status_t dummy_sync_wait(
     wsrep_t* w,
     wsrep_gtid_t* upto __attribute__((unused)),
+    int           tout __attribute__((unused)),
     wsrep_gtid_t* gtid __attribute__((unused)))
 {
     WSREP_DBUG_ENTER(w);
@@ -223,6 +224,7 @@ static wsrep_status_t dummy_to_execute_start(
     const size_t            key_num __attribute__((unused)),
     const struct wsrep_buf* data    __attribute__((unused)),
     const size_t            count   __attribute__((unused)),
+    const uint32_t          flags   __attribute__((unused)),
     wsrep_trx_meta_t*       meta    __attribute__((unused)))
 {
     WSREP_DBUG_ENTER(w);

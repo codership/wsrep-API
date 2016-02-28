@@ -112,6 +112,8 @@ typedef void (*wsrep_log_cb_t)(wsrep_log_level_t, const char *);
 #define WSREP_CAP_ANNOTATION            ( 1ULL << 13 )
 #define WSREP_CAP_PREORDERED            ( 1ULL << 14 )
 #define WSREP_CAP_SNAPSHOT              ( 1ULL << 15 )
+#define WSREP_CAP_NBO                   ( 1ULL << 16 )
+
 
 /*!
  *  Writeset flags
@@ -125,7 +127,7 @@ typedef void (*wsrep_log_cb_t)(wsrep_log_level_t, const char *);
  *
  * TRX_START    shall be set on the first trx fragment by provider
  *
- * Note that some of the flags are mutually exclusive (e.g. COMMIT and
+ * Note that some of the flags are mutually exclusive (e.g. TRX_END and
  * ROLLBACK).
  */
 #define WSREP_FLAG_TRX_END              ( 1ULL << 0 )
@@ -263,6 +265,7 @@ wsrep_gtid_print(const wsrep_gtid_t* gtid, char* str, size_t str_len);
 typedef struct wsrep_stid {
     wsrep_uuid_t      node;    //!< source node ID
     wsrep_trx_id_t    trx;     //!< local trx ID at source
+    wsrep_conn_id_t   conn;    //!< local connection ID at source
 } wsrep_stid_t;
 
 /*!
@@ -882,7 +885,10 @@ struct wsrep {
    * @brief Blocks until the given GTID is committed
    *
    * This call will block the caller until the given GTID
-   * is guaranteed to be committed.
+   * is guaranteed to be committed, or until a timeout occurs.
+   * The timeout value is given in parameter tout, if tout is -1,
+   * then the global causal read timeout applies.
+   *
    * If no pointer upto is provided the call will block until
    * causal ordering with all possible preceding writes in the
    * cluster is guaranteed.
@@ -891,12 +897,15 @@ struct wsrep {
    * transaction ID of the last transaction which is guaranteed
    * to be committed when the call returns.
    *
-   * @param wsrep provider handle
-   * @param upto  gtid to wait upto
-   * @param gtid  location to store GTID
+   * @param wsrep  provider handle
+   * @param upto   gtid to wait upto
+   * @param tout   timeout in seconds
+   *               -1 wait for global causal read timeout
+   * @param gtid   location to store GTID
    */
     wsrep_status_t (*sync_wait)(wsrep_t*      wsrep,
                                 wsrep_gtid_t* upto,
+                                int           tout,
                                 wsrep_gtid_t* gtid);
 
   /*!
@@ -926,8 +935,29 @@ struct wsrep {
   /*!
    * @brief Replicates a query and starts "total order isolation" section.
    *
+   * Regular mode:
+   *
    * Replicates the action spec and returns success code, which caller must
    * check. Total order isolation continues until to_execute_end() is called.
+   * Regular "total order isolation" is achieved by calling to_execute_start()
+   * with WSREP_FLAG_TRX_START and WSREP_FLAG_TRX_END set.
+   *
+   * Two-phase mode:
+   *
+   * In this mode a query execution is split in two phases. The first phase is
+   * acquiring total order isolation to access critical section and the
+   * second phase is to release aquired resources in total order.
+   *
+   * To start the first phase the call is made with WSREP_FLAG_TRX_START set.
+   * The action is replicated and success code is returned. The total order
+   * isolation continues until to_execute_end() is called. However, the provider
+   * will keep the reference to the operation for conflict resolution purposes.
+   *
+   * The second phase is started with WSREP_FLAG_TRX_END set. Provider
+   * returns once it has achieved total ordering isolation for second phase.
+   * Total order isolation continues until to_execute_end() is called.
+   * All references to the operation are cleared by provider before
+   * call to to_execute_end() returns.
    *
    * @param wsrep       provider handle
    * @param conn_id     connection ID
@@ -935,6 +965,7 @@ struct wsrep {
    * @param keys_num    lenght of the array of keys
    * @param action      action buffer array to be executed
    * @param count       action buffer count
+   * @param flags       flags
    * @param meta        transaction meta data
    *
    * @retval WSREP_OK         cluster commit succeeded
@@ -947,6 +978,7 @@ struct wsrep {
                                        size_t                  keys_num,
                                        const struct wsrep_buf* action,
                                        size_t                  count,
+                                       uint32_t                flags,
                                        wsrep_trx_meta_t*       meta);
 
   /*!
@@ -966,6 +998,7 @@ struct wsrep {
     wsrep_status_t (*to_execute_end)(wsrep_t*        wsrep,
                                      wsrep_conn_id_t conn_id,
                                      int             rcode);
+
 
   /*!
    * @brief Collects preordered replication events into a writeset.

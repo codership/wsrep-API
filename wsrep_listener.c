@@ -139,7 +139,10 @@ sst_donate_cb (void*               app_ctx   __attribute__((unused)),
     return WSREP_CB_SUCCESS;
 }
 
-static void synced_cb (void* app_ctx __attribute__((unused))) {}
+static wsrep_cb_status_t synced_cb (void* app_ctx __attribute__((unused)))
+{
+    return WSREP_CB_SUCCESS;
+}
 
 /* wsrep provider handle (global for simplicty) */
 static wsrep_t* wsrep = NULL;
