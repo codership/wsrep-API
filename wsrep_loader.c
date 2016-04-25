@@ -67,8 +67,8 @@ static int verify(const wsrep_t *wh, const char *iface_ver)
     VERIFY(wh->recv);
     VERIFY(wh->assign_read_view);
     VERIFY(wh->pre_commit);
-    VERIFY(wh->post_commit);
     VERIFY(wh->post_rollback);
+    VERIFY(wh->release);
     VERIFY(wh->replay_trx);
     VERIFY(wh->abort_pre_commit);
     VERIFY(wh->append_key);

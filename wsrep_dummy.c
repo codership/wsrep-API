@@ -133,7 +133,7 @@ static wsrep_status_t dummy_pre_commit(
     return WSREP_OK;
 }
 
-static wsrep_status_t dummy_post_commit(
+static wsrep_status_t dummy_post_rollback(
     wsrep_t* w,
     wsrep_ws_handle_t*  ws_handle  __attribute__((unused)))
 {
@@ -141,7 +141,7 @@ static wsrep_status_t dummy_post_commit(
     return WSREP_OK;
 }
 
-static wsrep_status_t dummy_post_rollback(
+static wsrep_status_t dummy_release(
     wsrep_t* w,
     wsrep_ws_handle_t*  ws_handle  __attribute__((unused)))
 {
@@ -377,8 +377,8 @@ static wsrep_t dummy_iface = {
     &dummy_recv,
     &dummy_assign_read_view,
     &dummy_pre_commit,
-    &dummy_post_commit,
     &dummy_post_rollback,
+    &dummy_release,
     &dummy_replay_trx,
     &dummy_abort_pre_commit,
     &dummy_append_key,

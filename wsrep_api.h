@@ -63,7 +63,7 @@ extern "C" {
  *                                                                        *
  **************************************************************************/
 
-#define WSREP_INTERFACE_VERSION "26"
+#define WSREP_INTERFACE_VERSION "26a"
 
 /*! Empty backend spec */
 #define WSREP_NONE "none"
@@ -754,8 +754,18 @@ struct wsrep {
    *
    * Must be called before transaction commit. Returns success code, which
    * caller must check.
+   *
    * In case of WSREP_OK, starts commit critical section, transaction can
    * commit. Otherwise transaction must rollback.
+   *
+   * In case of a failure there are two conceptually different situations:
+   * - the writeset was not replicated. In that case meta struct shall contain
+   *   undefined GTID: WSREP_UUID_UNDEFINED:WSREP_SEQNO_UNDEFINED.
+   * - the writeset was successfully replicated. In this case meta struct shall
+   *   contain a valid GTID.
+   * In both cases the call however won't start the critical section and shall
+   * return out of order. In case of a valid GTID the rollback critical section
+   * must be started by subsequent pre_rollback() call
    *
    * @param wsrep      provider handle
    * @param ws_handle  writeset of committing transaction
@@ -775,19 +785,9 @@ struct wsrep {
                                  wsrep_trx_meta_t*       meta);
 
   /*!
-   * @brief Releases resources after transaction commit.
-   *
-   * Ends commit critical section.
-   *
-   * @param wsrep      provider handle
-   * @param ws_handle  writeset of committing transaction
-   * @retval WSREP_OK  post_commit succeeded
-   */
-    wsrep_status_t (*post_commit) (wsrep_t*            wsrep,
-                                   wsrep_ws_handle_t*  ws_handle);
-
-  /*!
-   * @brief Releases resources after transaction rollback.
+   * @brief Must be called to enter total order critical section after
+   *        local transaction rollback when pre_commit() returned error
+   *        but ordered the transacton (returned non-tirvial GTID in meta).
    *
    * @param wsrep      provider handle
    * @param ws_handle  writeset of committing transaction
@@ -795,6 +795,18 @@ struct wsrep {
    */
     wsrep_status_t (*post_rollback)(wsrep_t*            wsrep,
                                     wsrep_ws_handle_t*  ws_handle);
+
+  /*!
+   * @brief Releases resources after transaction commit/rollback.
+   *
+   * Ends total order critical section.
+   *
+   * @param wsrep      provider handle
+   * @param ws_handle  writeset of committing transaction
+   * @retval WSREP_OK  release succeeded
+   */
+    wsrep_status_t (*release) (wsrep_t*            wsrep,
+                               wsrep_ws_handle_t*  ws_handle);
 
   /*!
    * @brief Replay trx as a slave writeset
