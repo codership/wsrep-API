@@ -234,7 +234,7 @@ static wsrep_status_t dummy_to_execute_start(
 static wsrep_status_t dummy_to_execute_end(
     wsrep_t* w,
     const wsrep_conn_id_t  conn_id   __attribute__((unused)),
-    int                    err       __attribute__((unused)))
+    const wsrep_buf_t*     err       __attribute__((unused)))
 {
     WSREP_DBUG_ENTER(w);
     return WSREP_OK;
@@ -275,8 +275,7 @@ static wsrep_status_t dummy_sst_sent(
 static wsrep_status_t dummy_sst_received(
     wsrep_t* w,
     const wsrep_gtid_t* state_id  __attribute__((unused)),
-    const void*         state     __attribute__((unused)),
-    const size_t        state_len __attribute__((unused)),
+    const wsrep_buf_t*  state     __attribute__((unused)),
     const int           rcode     __attribute__((unused)))
 {
     WSREP_DBUG_ENTER(w);
@@ -285,9 +284,8 @@ static wsrep_status_t dummy_sst_received(
 
 static wsrep_status_t dummy_snapshot(
     wsrep_t* w,
-    const void*  msg        __attribute__((unused)),
-    const size_t msg_len    __attribute__((unused)),
-    const char*  donor_spec __attribute__((unused)))
+    const wsrep_buf_t* msg        __attribute__((unused)),
+    const char*        donor_spec __attribute__((unused)))
 {
     WSREP_DBUG_ENTER(w);
     return WSREP_OK;

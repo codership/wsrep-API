@@ -91,16 +91,17 @@ sst_request_cb (void**            sst_req,
  *  utilize several CPU cores. */
 static int
 apply_cb (void*                   recv_ctx,
-          const void*             ws_data __attribute__((unused)),
-          size_t                  ws_size,
-          uint32_t                flags __attribute__((unused)),
-          const wsrep_trx_meta_t* meta)
+          uint32_t                flags   __attribute__((unused)),
+          const wsrep_buf_t*      ws      __attribute__((unused)),
+          const wsrep_trx_meta_t* meta,
+          void**                  err_buf __attribute__((unused)),
+          size_t*                 err_len __attribute__((unused)))
 {
     struct receiver_context* ctx = (struct receiver_context*)recv_ctx;
 
     snprintf (ctx->msg, sizeof(ctx->msg),
               "Got writeset %lld, size %zu", (long long)meta->gtid.seqno,
-              ws_size);
+              ws->len);
 
     return 0;
 }
@@ -127,13 +128,18 @@ commit_cb (void*                   recv_ctx,
 
 /* The following callbacks are stubs and not used in this example. */
 static wsrep_cb_status_t
+unordered_cb(void*                recv_ctx __attribute__((unused)),
+             const wsrep_buf_t*   data     __attribute__((unused)))
+{
+    return WSREP_CB_SUCCESS;
+}
+
+static wsrep_cb_status_t
 sst_donate_cb (void*               app_ctx   __attribute__((unused)),
                void*               recv_ctx  __attribute__((unused)),
-               const void*         msg       __attribute__((unused)),
-               size_t              msg_len   __attribute__((unused)),
+               const wsrep_buf_t*  msg       __attribute__((unused)),
                const wsrep_gtid_t* state_id  __attribute__((unused)),
-               const char*         state     __attribute__((unused)),
-               size_t              state_len __attribute__((unused)),
+               const wsrep_buf_t*  state     __attribute__((unused)),
                wsrep_bool_t        bypass    __attribute__((unused)))
 {
     return WSREP_CB_SUCCESS;
@@ -207,13 +213,13 @@ int main (int argc, char* argv[])
 
         .state_id      = &state_id,
         .state         = NULL,
-        .state_len     = 0,
 
         .logger_cb      = logger_cb,
         .view_cb        = view_cb,
         .sst_request_cb = sst_request_cb,
         .apply_cb       = apply_cb,
         .commit_cb      = commit_cb,
+        .unordered_cb   = unordered_cb,
         .sst_donate_cb  = sst_donate_cb,
         .synced_cb      = synced_cb
     };
