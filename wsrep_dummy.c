@@ -167,6 +167,15 @@ static wsrep_status_t dummy_abort_pre_commit(
     return WSREP_OK;
 }
 
+static wsrep_status_t dummy_rollback(
+    wsrep_t* w,
+    const wsrep_trx_id_t trx __attribute__((unused)),
+    const wsrep_buf_t* data  __attribute__((unused)))
+{
+    WSREP_DBUG_ENTER(w);
+    return WSREP_OK;
+}
+
 static wsrep_status_t dummy_append_key(
     wsrep_t* w,
     wsrep_ws_handle_t*     ws_handle  __attribute__((unused)),
@@ -379,6 +388,7 @@ static wsrep_t dummy_iface = {
     &dummy_release,
     &dummy_replay_trx,
     &dummy_abort_pre_commit,
+    &dummy_rollback,
     &dummy_append_key,
     &dummy_append_data,
     &dummy_sync_wait,
