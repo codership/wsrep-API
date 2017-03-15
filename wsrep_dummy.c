@@ -86,7 +86,7 @@ static wsrep_status_t dummy_options_set(
 static char* dummy_options_get (wsrep_t* w)
 {
     WSREP_DBUG_ENTER(w);
-    return WSREP_DUMMY(w)->options;
+    return strdup(WSREP_DUMMY(w)->options);
 }
 
 static wsrep_status_t dummy_connect(
@@ -161,7 +161,8 @@ static wsrep_status_t dummy_replay_trx(
 static wsrep_status_t dummy_abort_pre_commit(
     wsrep_t* w,
     const wsrep_seqno_t  bf_seqno __attribute__((unused)),
-    const wsrep_trx_id_t trx_id   __attribute__((unused)))
+    const wsrep_trx_id_t trx_id   __attribute__((unused)),
+    wsrep_seqno_t *victim_seqno __attribute__((unused)))
 {
     WSREP_DBUG_ENTER(w);
     return WSREP_OK;

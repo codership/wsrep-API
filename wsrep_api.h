@@ -168,7 +168,8 @@ typedef enum wsrep_status
     WSREP_CONN_FAIL,       //!< error in client connection, must abort
     WSREP_NODE_FAIL,       //!< error in node state, wsrep must reinit
     WSREP_FATAL,           //!< fatal error, server must abort
-    WSREP_NOT_IMPLEMENTED  //!< feature not implemented
+    WSREP_NOT_IMPLEMENTED, //!< feature not implemented
+    WSREP_NOT_ALLOWED      //!< operation not allowed
 } wsrep_status_t;
 
 
@@ -837,16 +838,23 @@ struct wsrep {
    * The kill routine checks that abort is not attmpted against a transaction
    * which is front of the caller (in total order).
    *
+   * If the abort was successful, the victim sequence number is stored
+   * into location pointed by the victim_seqno.
+   *
    * @param wsrep      provider handle
    * @param bf_seqno   seqno of brute force trx, running this cancel
    * @param victim_trx transaction to be aborted, and which is committing
+   * @param victim_seqno seqno of the victim transaction if assigned
    *
-   * @retval WSREP_OK       abort secceded
-   * @retval WSREP_WARNING  abort failed
+   * @retval WSREP_OK          abort succeded
+   * @retval WSREP_NOT_ALLOWED the provider declined the abort request
+   * @retval WSREP_TRX_MISSING the victim_trx was missing
+   * @retval WSREP_WARNING     abort failed
    */
     wsrep_status_t (*abort_pre_commit)(wsrep_t*       wsrep,
                                        wsrep_seqno_t  bf_seqno,
-                                       wsrep_trx_id_t victim_trx);
+                                       wsrep_trx_id_t victim_trx,
+                                       wsrep_seqno_t* victim_seqno);
 
   /*!
    * @brief Send a rollback fragment on behalf of trx
