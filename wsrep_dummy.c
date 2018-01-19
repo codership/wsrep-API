@@ -63,7 +63,7 @@ static wsrep_status_t dummy_init (wsrep_t* w,
     return WSREP_OK;
 }
 
-static uint64_t dummy_capabilities (wsrep_t* w __attribute__((unused)))
+static wsrep_cap_t dummy_capabilities (wsrep_t* w __attribute__((unused)))
 {
     return 0;
 }
