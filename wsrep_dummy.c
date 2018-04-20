@@ -135,7 +135,8 @@ static wsrep_status_t dummy_certify(
 
 static wsrep_status_t dummy_commit_order_enter(
     wsrep_t* w,
-    const wsrep_ws_handle_t* ws_handle  __attribute__((unused)))
+    const wsrep_ws_handle_t* ws_handle  __attribute__((unused)),
+    const wsrep_trx_meta_t*  meta       __attribute__((unused)))
 {
     WSREP_DBUG_ENTER(w);
     return WSREP_OK;
@@ -144,6 +145,7 @@ static wsrep_status_t dummy_commit_order_enter(
 static wsrep_status_t dummy_commit_order_leave(
     wsrep_t* w,
     const wsrep_ws_handle_t* ws_handle  __attribute__((unused)),
+    const wsrep_trx_meta_t*  meta       __attribute__((unused)),
     const wsrep_buf_t*       error      __attribute__((unused)))
 {
     WSREP_DBUG_ENTER(w);
