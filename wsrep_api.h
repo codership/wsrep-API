@@ -778,7 +778,8 @@ struct wsrep {
    * @retval WSREP_NODE_FAIL  must close all connections and reinit
    */
     wsrep_status_t (*commit_order_enter)(wsrep_t*                 wsrep,
-                                         const wsrep_ws_handle_t* ws_handle);
+                                         const wsrep_ws_handle_t* ws_handle,
+                                         const wsrep_trx_meta_t* meta);
 
   /*!
    * @brief Leaves commit order critical section
@@ -795,6 +796,7 @@ struct wsrep {
    */
     wsrep_status_t (*commit_order_leave)(wsrep_t*                 wsrep,
                                          const wsrep_ws_handle_t* ws_handle,
+                                         const wsrep_trx_meta_t*  meta,
                                          const wsrep_buf_t*       error);
 
   /*!
