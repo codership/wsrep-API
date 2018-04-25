@@ -773,6 +773,7 @@ struct wsrep {
    *
    * @param wsrep      provider handle
    * @param ws_handle  internal provider writeset handle
+   * @param meta       transaction meta data
    *
    * @retval WSREP_OK         commit order entered succesfully
    * @retval WSREP_NODE_FAIL  must close all connections and reinit
@@ -789,6 +790,7 @@ struct wsrep {
    *
    * @param wsrep      provider handle
    * @param ws_handle  internal provider writeset handle
+   * @param meta       transaction meta data
    * @param error      buffer containing error info (null/empty for no error)
    *
    * @retval WSREP_OK         commit order left succesfully
