@@ -627,11 +627,11 @@ typedef struct wsrep_po_handle { void* opaque; } wsrep_po_handle_t;
 static const wsrep_po_handle_t WSREP_PO_INITIALIZER = { NULL };
 
 
-typedef struct wsrep wsrep_t;
+typedef struct wsrep_st wsrep_t;
 /*!
  * wsrep interface for dynamically loadable libraries
  */
-struct wsrep {
+struct wsrep_st {
 
     const char *version; //!< interface version string
 
@@ -837,10 +837,10 @@ struct wsrep {
                                  void*               trx_ctx);
 
   /*!
-   * @brief Abort pre_commit() call of another thread.
+   * @brief Abort certify() call of another thread.
    *
    * It is possible, that some high-priority transaction needs to abort
-   * another transaction which is in pre_commit() call waiting for resources.
+   * another transaction which is in certify() call waiting for resources.
    *
    * The kill routine checks that abort is not attmpted against a transaction
    * which is front of the caller (in total order).
