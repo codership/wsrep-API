@@ -118,7 +118,7 @@ typedef void (*wsrep_log_cb_t)(wsrep_log_level_t, const char *);
 typedef uint32_t wsrep_cap_t; //!< capabilities bitmask
 
 /*!
- *  Writeset flags
+ * Writeset flags
  *
  * TRX_END      the writeset and all preceding writesets must be committed
  * ROLLBACK     all preceding writesets in a transaction must be rolled back
@@ -128,6 +128,7 @@ typedef uint32_t wsrep_cap_t; //!< capabilities bitmask
  * NATIVE       the writeset contains another writeset in this provider format
  *
  * TRX_START    shall be set on the first trx fragment by provider
+ * TRX_PREPARE  shall be set on the fragment which prepares the transaction
  *
  * Note that some of the flags are mutually exclusive (e.g. TRX_END and
  * ROLLBACK).
@@ -139,7 +140,8 @@ typedef uint32_t wsrep_cap_t; //!< capabilities bitmask
 #define WSREP_FLAG_COMMUTATIVE          ( 1ULL << 4 )
 #define WSREP_FLAG_NATIVE               ( 1ULL << 5 )
 #define WSREP_FLAG_TRX_START            ( 1ULL << 6 )
-#define WSREP_FLAG_SNAPSHOT             ( 1ULL << 7 )
+#define WSREP_FLAG_TRX_PREPARE          ( 1ULL << 7 )
+#define WSREP_FLAG_SNAPSHOT             ( 1ULL << 8 )
 
 #define WSREP_FLAGS_LAST                WSREP_FLAG_SNAPSHOT
 #define WSREP_FLAGS_MASK                ((WSREP_FLAGS_LAST << 1) - 1)
