@@ -162,8 +162,8 @@ static wsrep_status_t dummy_release(
 
 static wsrep_status_t dummy_replay_trx(
     wsrep_t* w,
-    wsrep_ws_handle_t*  ws_handle  __attribute__((unused)),
-    void*               trx_ctx    __attribute__((unused)))
+    const wsrep_ws_handle_t*  ws_handle  __attribute__((unused)),
+    void*                     trx_ctx    __attribute__((unused)))
 {
     WSREP_DBUG_ENTER(w);
     return WSREP_OK;
