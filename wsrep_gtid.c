@@ -14,7 +14,7 @@
    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  */
 
-/*! @file Helper functions to deal with GTID string representations */
+/** Helper functions to deal with GTID string representations */
 
 #include <errno.h>
 #include <stdio.h>
@@ -23,10 +23,6 @@
 
 #include "wsrep_api.h"
 
-/*!
- * Read GTID from string
- * @return length of GTID string representation or -EINVAL in case of error
- */
 int
 wsrep_gtid_scan(const char* str, size_t str_len, wsrep_gtid_t* gtid)
 {
@@ -51,11 +47,6 @@ wsrep_gtid_scan(const char* str, size_t str_len, wsrep_gtid_t* gtid)
     return -EINVAL;
 }
 
-/*!
- * Write GTID to string
- * @return length of GTID string representation or -EMSGSIZE if string is too
- *         short
- */
 int
 wsrep_gtid_print(const wsrep_gtid_t* gtid, char* str, size_t str_len)
 {

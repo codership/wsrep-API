@@ -14,9 +14,8 @@
    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  */
 
-/*! @file Example of wsrep event listener. Outputs description of received
- *        events to stdout. To get a general picture you should start with
- *        main() function. */
+/** Example of wsrep event listener. Outputs description of received events to
+ * stdout. To get a general picture you should start with main() function. */
 
 #include <wsrep_api.h>
 
@@ -27,32 +26,33 @@
 #include <signal.h>
 #include <pthread.h>
 
-/*! This is global application context, it will be used by wsrep callbacks */
+/** Global application context, it will be used by wsrep callbacks. */
 struct application_context
 {};
 
 static struct application_context global_ctx;
 
-/*! This is receiving thread context, it will be used by wsrep callbacks */
+/** Receiving thread context, it will be used by wsrep callbacks. */
 struct receiver_context
 {
+    /** Receive buffer. */
     char msg[4096];
 };
 
-/* wsrep provider handle (global for simplicty) */
+/** WSREP provider handle (global for simplicty). */
 static wsrep_t* wsrep = NULL;
 
-/*! This is a logger callback which library will be using to log events. */
+/** Logger callback which library will be using to log events. */
 static void
 logger_cb (wsrep_log_level_t level __attribute__((unused)), const char* msg)
 {
     fprintf (stderr, "WSREP: %s\n", msg);
 }
 
-/*! This will be called on cluster view change (nodes joining, leaving, etc.).
- *  Each view change is the point where application may be pronounced out of
- *  sync with the current cluster view and need state transfer.
- *  It is guaranteed that no other callbacks are called concurrently with it. */
+/** Called on cluster view change (nodes joining, leaving, etc).
+ * Each view change is the point where application may be pronounced out of
+ * sync with the current cluster view and need state transfer.
+ * It is guaranteed that no other callbacks are called concurrently with it. */
 static wsrep_cb_status_t
 view_cb (void*                    app_ctx   __attribute__((unused)),
          void*                    recv_ctx  __attribute__((unused)),
@@ -67,10 +67,10 @@ view_cb (void*                    app_ctx   __attribute__((unused)),
     return WSREP_CB_SUCCESS;
 }
 
-/*! This will be called on cluster view change (nodes joining, leaving, etc.).
- *  Each view change is the point where application may be pronounced out of
- *  sync with the current cluster view and need state transfer.
- *  It is guaranteed that no other callbacks are called concurrently with it. */
+/** Called on cluster view change (nodes joining, leaving, etc).
+ * Each view change is the point where application may be pronounced out of
+ * sync with the current cluster view and need state transfer.
+ * It is guaranteed that no other callbacks are called concurrently with it. */
 static wsrep_cb_status_t
 sst_request_cb (void**            sst_req,
                 size_t*           sst_req_len)
@@ -89,9 +89,9 @@ sst_request_cb (void**            sst_req,
     return WSREP_CB_SUCCESS;
 }
 
-/*! This is called to "apply" writeset.
- *  If writesets don't conflict on keys, it may be called concurrently to
- *  utilize several CPU cores. */
+/** Called to "apply" writeset.
+ * If writesets don't conflict on keys, it may be called concurrently to
+ * utilize several CPU cores. */
 static wsrep_cb_status_t
 apply_cb (void*                    recv_ctx,
           const wsrep_ws_handle_t* ws_handle __attribute__((unused)),
