@@ -73,6 +73,7 @@ static int verify(const wsrep_t *wh, const char *iface_ver)
     VERIFY(wh->init);
     VERIFY(wh->options_set);
     VERIFY(wh->options_get);
+    VERIFY(wh->enc_set_key);
     VERIFY(wh->connect);
     VERIFY(wh->disconnect);
     VERIFY(wh->recv);

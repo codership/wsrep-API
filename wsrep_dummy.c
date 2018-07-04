@@ -89,6 +89,14 @@ static char* dummy_options_get (wsrep_t* w)
     return strdup(WSREP_DUMMY(w)->options);
 }
 
+static wsrep_status_t dummy_enc_set_key(
+    wsrep_t* w,
+    const wsrep_enc_key_t* key __attribute__((unused)))
+{
+    WSREP_DBUG_ENTER(w);
+    return WSREP_OK;
+}
+
 static wsrep_status_t dummy_connect(
     wsrep_t* w,
     const char*  name      __attribute__((unused)),
@@ -391,6 +399,7 @@ static wsrep_t dummy_iface = {
     &dummy_capabilities,
     &dummy_options_set,
     &dummy_options_get,
+    &dummy_enc_set_key,
     &dummy_connect,
     &dummy_disconnect,
     &dummy_recv,
