@@ -63,7 +63,7 @@ extern "C" {
  *                                                                        *
  **************************************************************************/
 
-#define WSREP_INTERFACE_VERSION "26"
+#define WSREP_INTERFACE_VERSION "26enc"
 
 /*! Empty backend spec */
 #define WSREP_NONE "none"
@@ -510,6 +510,89 @@ typedef enum wsrep_cb_status (*wsrep_sst_donate_cb_t) (
 typedef enum wsrep_cb_status (*wsrep_synced_cb_t) (void* app_ctx);
 
 
+/*
+ * An opaque encryption key of arbitrary size - provided by the application
+ * May contain not only the key, but also algorithm specification and the like.
+ */
+typedef wsrep_buf_t wsrep_enc_key_t;
+
+/*
+ * Initialization vector/nonce. Given that most symmetric ciphers use 16 byte
+ * blocks this can be made 32 bytes without much loss of generality.
+ * Must be set by provider to start an encryption/decrytpion operation.
+ */
+typedef char wsrep_enc_iv_t[32];
+
+/*
+ * Encryption context that should be sufficient to deterministically encrypt/
+ * decrypt a data buffer either standalone or as part of a stream. May be used
+ * passed in apply_cb() along with the encrypted replication events to
+ * application as well.
+ *
+ * @param key    [in] can be a pointer to const since provider will have to keep
+ *               the keys until the last writeset that uses the key is in the
+ *               cache
+ * @param iv     [in] initialization vector for the beginning of the new
+ *               operation.
+ * @param ctx    [in/out] ongoing operation context
+ *               To initialize a new context the encrypt_cb() caller sets it to
+ *               NULL, which signals the encryption of a new continuous buffer.
+ *               In that case the callback allocates the new context (using
+ *               supplied key and iv) and stores the pointer to it for
+ *               processing subsequent data.
+ *               The end of the operation is signaled by passing TRUE in the
+ *               paramter `final` to the encryption callback, the callback then
+ *               finishes any pending encryption and deallocates the context.
+ */
+typedef struct
+{
+    const wsrep_enc_key_t* key;
+    const wsrep_enc_iv_t*  iv;
+    void*                  ctx;
+}
+wsrep_enc_ctx_t;
+
+/*
+ * Encryption direction
+ */
+typedef enum
+{
+    WSREP_ENC = 0, /* encryption */
+    WSREP_DEC = 1  /* decryption */
+}
+wsrep_enc_direction_t;
+
+/*
+ * Encryption/decryption callback. Must be used by both provider and the
+ * application to obtain identical results. Can be NULL for no encryption.
+ *
+ * @param ctx    current operation context
+ * @param input  input data buffer
+ * @param output an output buffer, must be at least the size of the input
+ *               data plus unwritten bytes from the previous call(s). E.g. in
+ *               block mode, encryption/decryption operation will write data
+ *               to output in multiples of the algoritm block size. So a call
+ *               to encrypt a single byte won't normally write anything to
+ *               output waiting for the next input chunk. So on the next call
+ *               it may write one byte more than was given in the input.
+ * @param direction of the operation (encryption/decryption)
+ * @param final  true if this is the last buffer to encrypt in the stream.
+ *               In that case the callback shall write the remaining bytes of
+ *               the stream to output (if any) and deallocate ctx->ctx if
+ *               allocated previously
+ *
+ * @return a number of bytes written to output or a negative error code.
+ */
+typedef int (*wsrep_encrypt_cb_t)
+(
+    wsrep_enc_ctx_t*      ctx,
+    const wsrep_buf_t*    input,
+    void*                 output,
+    wsrep_enc_direction_t direction,
+    bool                  final
+);
+
+
 /*!
  * Initialization parameters for wsrep provider.
  */
@@ -533,7 +616,8 @@ struct wsrep_init_args
     wsrep_log_cb_t         logger_cb;       //!< logging handler
     wsrep_connected_cb_t   connected_cb;    //!< connected to group
     wsrep_view_cb_t        view_cb;         //!< group view change handler
-    wsrep_sst_request_cb_t sst_request_cb;          //!< SST request creator
+    wsrep_sst_request_cb_t sst_request_cb;  //!< SST request creator
+    wsrep_encrypt_cb_t     encrypt_cb;      //!< Encryption callback
 
     /* Applier callbacks */
     wsrep_apply_cb_t       apply_cb;        //!< apply  callback
@@ -679,6 +763,18 @@ struct wsrep_st {
     char*          (*options_get) (wsrep_t* wsrep);
 
   /*!
+   * @brief A call to set/rotate the key in provider.
+   *
+   * This may happen asynchronously and so is a best effort operation.
+   * Some buffers may still be encrypted with a previous key.
+   *
+   * @param a key object for the encryption callback
+   *
+   * return success or an error code
+   */
+    wsrep_status_t (*enc_set_key)(wsrep_t* wsrep, const wsrep_enc_key_t* key);
+
+  /*!
    * @brief Opens connection to cluster
    *
    * Returns when either node is ready to operate as a part of the cluster
@@ -782,7 +878,7 @@ struct wsrep_st {
    */
     wsrep_status_t (*commit_order_enter)(wsrep_t*                 wsrep,
                                          const wsrep_ws_handle_t* ws_handle,
-                                         const wsrep_trx_meta_t* meta);
+                                         const wsrep_trx_meta_t*  meta);
 
   /*!
    * @brief Leaves commit order critical section

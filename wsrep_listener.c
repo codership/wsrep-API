@@ -72,7 +72,8 @@ view_cb (void*                    app_ctx   __attribute__((unused)),
  *  sync with the current cluster view and need state transfer.
  *  It is guaranteed that no other callbacks are called concurrently with it. */
 static wsrep_cb_status_t
-sst_request_cb (void**            sst_req,
+sst_request_cb (void*             app_ctx __attribute__((unused)),
+                void**            sst_req,
                 size_t*           sst_req_len)
 {
     /* For simplicity we're skipping state transfer by using magic string
@@ -108,9 +109,9 @@ apply_cb (void*                    recv_ctx,
 
     bool const commit = flags & (WSREP_FLAG_TRX_END | WSREP_FLAG_ROLLBACK);
 
-    wsrep->commit_order_enter(wsrep, ws_handle);
+    wsrep->commit_order_enter(wsrep, ws_handle, meta);
     if (commit) puts(ctx->msg);
-    wsrep->commit_order_leave(wsrep, ws_handle, NULL);
+    wsrep->commit_order_leave(wsrep, ws_handle, meta, NULL);
 
     return WSREP_CB_SUCCESS;
 }
@@ -203,6 +204,7 @@ int main (int argc, char* argv[])
         .logger_cb      = logger_cb,
         .view_cb        = view_cb,
         .sst_request_cb = sst_request_cb,
+        .encrypt_cb     = NULL,
         .apply_cb       = apply_cb,
         .unordered_cb   = unordered_cb,
         .sst_donate_cb  = sst_donate_cb,
