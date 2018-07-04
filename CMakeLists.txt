@@ -19,7 +19,7 @@ INCLUDE_DIRECTORIES(".")
 
 SET(WSREP_SOURCES wsrep_gtid.c wsrep_uuid.c wsrep_loader.c wsrep_dummy.c)
 
-ADD_CONVENIENCE_LIBRARY(wsrep ${WSREP_SOURCES})
+ADD_LIBRARY(wsrep ${WSREP_SOURCES})
 
 #ADD_EXECUTABLE(listener wsrep_listener.c ${WSREP_SOURCES})
 #TARGET_LINK_LIBRARIES(listener ${LIBDL})
