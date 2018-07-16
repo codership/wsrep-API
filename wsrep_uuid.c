@@ -14,7 +14,7 @@
    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  */
 
-/*! @file Helper functions to deal with history UUID string representations */
+/** Helper functions to deal with history UUID string representations. */
 
 #include <errno.h>
 #include <ctype.h>
@@ -23,10 +23,8 @@
 
 #include "wsrep_api.h"
 
-/*!
- * Read UUID from string
- * @return length of UUID string representation or -EINVAL in case of error
- */
+/** Read UUID from string.
+ * @return length of UUID string representation or -EINVAL in case of error */
 int
 wsrep_uuid_scan (const char* str, size_t str_len, wsrep_uuid_t* uuid)
 {
@@ -63,11 +61,9 @@ wsrep_uuid_scan (const char* str, size_t str_len, wsrep_uuid_t* uuid)
     return -EINVAL;
 }
 
-/*!
- * Write UUID to string
+/** Write UUID to string.
  * @return length of UUID string representation or -EMSGSIZE if string is too
- *         short
- */
+ * short */
 int
 wsrep_uuid_print (const wsrep_uuid_t* uuid, char* str, size_t str_len)
 {
@@ -83,10 +79,9 @@ wsrep_uuid_print (const wsrep_uuid_t* uuid, char* str, size_t str_len)
     }
 }
 
-/*!
- * Compare two UUIDs
- * @return -1, 0, 1 if lhs is respectively smaller, equal, or greater than rhs
- */
+/** Compare two UUIDs.
+ * @return -1, 0, 1 if lhs is respectively smaller, equal, or
+ * greater than rhs */
 int
 wsrep_uuid_compare (const wsrep_uuid_t* lhs, const wsrep_uuid_t* rhs)
 {

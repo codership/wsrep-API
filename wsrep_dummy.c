@@ -14,7 +14,7 @@
    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  */
 
-/*! @file Dummy wsrep API implementation. */
+/** Dummy wsrep API implementation. */
 
 #include "wsrep_api.h"
 
@@ -22,17 +22,20 @@
 #include <stdbool.h>
 #include <string.h>
 
-/*! Dummy backend context. */
+/** Dummy backend context. */
 typedef struct wsrep_dummy
 {
+    /** Log function. */
     wsrep_log_cb_t log_fn;
+
+    /** Options. */
     char* options;
 } wsrep_dummy_t;
 
-/* Get pointer to wsrep_dummy context from wsrep_t pointer */
+/** Get pointer to wsrep_dummy context from wsrep_t pointer. */
 #define WSREP_DUMMY(_p) ((wsrep_dummy_t *) (_p)->ctx)
 
-/* Trace function usage a-la DBUG */
+/** Trace function usage a-la DBUG. */
 #define WSREP_DBUG_ENTER(_w) do {                                       \
         if (WSREP_DUMMY(_w)) {                                          \
             if (WSREP_DUMMY(_w)->log_fn)                                \
@@ -432,6 +435,9 @@ static wsrep_t dummy_iface = {
     NULL
 };
 
+/** Initialize a wsrep_t object.
+ * @param[in,out] w object to be initilized
+ * @return 0 on success or errno error code otherwise */
 int wsrep_dummy_loader(wsrep_t* w)
 {
     if (!w)
