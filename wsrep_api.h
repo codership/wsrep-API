@@ -669,7 +669,8 @@ typedef struct wsrep_key
 typedef enum wsrep_key_type
 {
     WSREP_KEY_SHARED = 0,
-    WSREP_KEY_SEMI,
+    WSREP_KEY_REFERENCE,
+    WSREP_KEY_UPDATE,
     WSREP_KEY_EXCLUSIVE
 } wsrep_key_type_t;
 
