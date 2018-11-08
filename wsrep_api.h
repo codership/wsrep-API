@@ -566,26 +566,28 @@ wsrep_enc_direction_t;
  * Encryption/decryption callback. Must be used by both provider and the
  * application to obtain identical results. Can be NULL for no encryption.
  *
- * @param ctx    current operation context
- * @param input  input data buffer
- * @param output an output buffer, must be at least the size of the input
- *               data plus unwritten bytes from the previous call(s). E.g. in
- *               block mode, encryption/decryption operation will write data
- *               to output in multiples of the algoritm block size. So a call
- *               to encrypt a single byte won't normally write anything to
- *               output waiting for the next input chunk. So on the next call
- *               it may write one byte more than was given in the input.
+ * @param app_ctx   application context
+ * @param enc_ctx   current operation context
+ * @param input     input data buffer
+ * @param output    an output buffer, must be at least the size of the input
+ *                  data plus unwritten bytes from the previous call(s). E.g. in
+ *                  block mode, encryption/decryption operation will write data
+ *                  to output in multiples of the algoritm block size. So a call
+ *                  to encrypt a single byte won't normally write anything to
+ *                  output waiting for the next input chunk. So on the next call
+ *                  it may write one byte more than was given in the input.
  * @param direction of the operation (encryption/decryption)
- * @param final  true if this is the last buffer to encrypt in the stream.
- *               In that case the callback shall write the remaining bytes of
- *               the stream to output (if any) and deallocate ctx->ctx if
- *               allocated previously
+ * @param final     true if this is the last buffer to encrypt in the stream.
+ *                  In that case the callback shall write the remaining bytes of
+ *                  the stream to output (if any) and deallocate ctx->ctx if
+ *                  allocated previously
  *
- * @return a number of bytes written to output or a negative error code.
+ * @return          a number of bytes written to output or a negative error code.
  */
-typedef int (*wsrep_encrypt_cb_t)
-(
-    wsrep_enc_ctx_t*      ctx,
+typedef enum wsrep_cb_status (*wsrep_encrypt_cb_t)
+(   
+    void*                 app_ctx,
+    wsrep_enc_ctx_t*      enc_ctx,
     const wsrep_buf_t*    input,
     void*                 output,
     wsrep_enc_direction_t direction,
