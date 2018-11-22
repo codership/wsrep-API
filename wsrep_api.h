@@ -132,6 +132,7 @@ typedef void (*wsrep_log_cb_t)(wsrep_log_level_t, const char *);
 #define WSREP_FLAG_PA_UNSAFE            ( 1ULL << 3 )
 #define WSREP_FLAG_COMMUTATIVE          ( 1ULL << 4 )
 #define WSREP_FLAG_NATIVE               ( 1ULL << 5 )
+#define WSREP_FLAG_IMPLICIT_DEPS        ( 1ULL << 9 )
 
 
 typedef uint64_t wsrep_trx_id_t;  //!< application transaction ID
