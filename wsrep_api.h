@@ -142,8 +142,9 @@ typedef uint32_t wsrep_cap_t; //!< capabilities bitmask
 #define WSREP_FLAG_TRX_START            ( 1ULL << 6 )
 #define WSREP_FLAG_TRX_PREPARE          ( 1ULL << 7 )
 #define WSREP_FLAG_SNAPSHOT             ( 1ULL << 8 )
+#define WSREP_FLAG_IMPLICIT_DEPS        ( 1ULL << 9 )
 
-#define WSREP_FLAGS_LAST                WSREP_FLAG_SNAPSHOT
+#define WSREP_FLAGS_LAST                WSREP_FLAG_IMPLICIT_DEPS
 #define WSREP_FLAGS_MASK                ((WSREP_FLAGS_LAST << 1) - 1)
 
 
