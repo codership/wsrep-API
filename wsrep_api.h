@@ -542,7 +542,7 @@ typedef char wsrep_enc_iv_t[32];
  *               supplied key and iv) and stores the pointer to it for
  *               processing subsequent data.
  *               The end of the operation is signaled by passing TRUE in the
- *               paramter `final` to the encryption callback, the callback then
+ *               parameter `last` to the encryption callback, the callback then
  *               finishes any pending encryption and deallocates the context.
  */
 typedef struct
@@ -578,21 +578,21 @@ wsrep_enc_direction_t;
  *                  output waiting for the next input chunk. So on the next call
  *                  it may write one byte more than was given in the input.
  * @param direction of the operation (encryption/decryption)
- * @param final     true if this is the last buffer to encrypt in the stream.
+ * @param last      true if this is the last buffer to encrypt in the stream.
  *                  In that case the callback shall write the remaining bytes of
  *                  the stream to output (if any) and deallocate ctx->ctx if
  *                  allocated previously
  *
  * @return          a number of bytes written to output or a negative error code.
  */
-typedef enum wsrep_cb_status (*wsrep_encrypt_cb_t)
+typedef int (*wsrep_encrypt_cb_t)
 (   
     void*                 app_ctx,
     wsrep_enc_ctx_t*      enc_ctx,
     const wsrep_buf_t*    input,
     void*                 output,
     wsrep_enc_direction_t direction,
-    bool                  final
+    bool                  last
 );
 
 
