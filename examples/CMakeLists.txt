@@ -13,14 +13,5 @@
 # along with this program; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301 USA
 
-CMAKE_MINIMUM_REQUIRED(VERSION 2.8)
-
-INCLUDE_DIRECTORIES(".")
-
-SET(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -Wextra -Werror -Wconversion")
-
-SET(WSREP_SOURCES wsrep_gtid.c wsrep_uuid.c wsrep_loader.c wsrep_dummy.c)
-
-ADD_LIBRARY(wsrep ${WSREP_SOURCES})
-
-ADD_SUBDIRECTORY(examples)
+ADD_EXECUTABLE(listener listener.c)
+TARGET_LINK_LIBRARIES(listener wsrep dl pthread)
