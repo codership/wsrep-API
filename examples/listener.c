@@ -85,7 +85,7 @@ sst_request_cb (void*             app_ctx __attribute__((unused)),
     if (*sst_req)
         *sst_req_len = strlen(*sst_req) + 1;
     else
-        *sst_req_len = -ENOMEM;
+        *sst_req_len = 0;
 
     return WSREP_CB_SUCCESS;
 }
@@ -219,11 +219,15 @@ int main (int argc, char* argv[])
     }
 
     /* Connect to cluster */
-    rc = wsrep->connect (wsrep, cluster_name, wsrep_uri, "", 0);
+    rc = wsrep->connect(wsrep, cluster_name, wsrep_uri, "", 0);
     if (0 != rc)
     {
-        fprintf (stderr,
-                 "wsrep::connect() failed: %d (%s)\n", rc, strerror(-rc));
+        if (rc < 0)
+            fprintf (stderr, "wsrep::connect() failed: %d (%s)\n", rc,
+                     strerror(-(int)rc));
+        else
+            fprintf (stderr, "wsrep::connect() failed: %d\n", rc);
+
         exit (EXIT_FAILURE);
     }
 
