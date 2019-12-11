@@ -586,7 +586,7 @@ wsrep_enc_direction_t;
  * @return          a number of bytes written to output or a negative error code.
  */
 typedef int (*wsrep_encrypt_cb_t)
-(   
+(
     void*                 app_ctx,
     wsrep_enc_ctx_t*      enc_ctx,
     const wsrep_buf_t*    input,
@@ -802,9 +802,6 @@ struct wsrep_st {
   /*!
    * @brief Closes connection to cluster.
    *
-   * If state_uuid and/or state_seqno is not NULL, will store final state
-   * in there.
-   *
    * @param wsrep this  wsrep handler
    */
     wsrep_status_t (*disconnect)(wsrep_t* wsrep);
@@ -812,7 +809,8 @@ struct wsrep_st {
   /*!
    * @brief start receiving replication events
    *
-   * This function never returns
+   * This function does not return until provider is closed or \p exit_loop
+   * parameter to wsrep_apply_cb_t() is set to true.
    *
    * @param wsrep provider handle
    * @param recv_ctx receiver context
