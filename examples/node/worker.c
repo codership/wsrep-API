@@ -61,7 +61,7 @@ node_worker_apply_cb(void*                    const recv_ctx,
 
 
 static void*
-_worker_slave(void* recv_ctx)
+worker_slave(void* recv_ctx)
 {
     struct node_worker* const worker = recv_ctx;
     wsrep_t* const wsrep = node_wsrep_provider(worker->node->wsrep);
@@ -77,7 +77,7 @@ _worker_slave(void* recv_ctx)
 }
 
 static void*
-_worker_master(void* send_ctx)
+worker_master(void* send_ctx)
 {
     struct node_worker* const worker = send_ctx;
     struct node_ctx*    const node   = worker->node;
@@ -143,7 +143,7 @@ node_worker_start(struct node_ctx*   const ctx,
     if (ret)
     {
         void* (* const routine) (void*) =
-            type == NODE_WORKER_SLAVE ? _worker_slave : _worker_master;
+            type == NODE_WORKER_SLAVE ? worker_slave : worker_master;
 
         size_t i;
         for (i = 0; i < size; i++)

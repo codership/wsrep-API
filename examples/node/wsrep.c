@@ -54,7 +54,7 @@ struct node_wsrep
     bool bootstrap; // shall this node bootstrap a primary view?
 };
 
-static struct node_wsrep _wsrep =
+static struct node_wsrep s_wsrep =
 {
     .instance = NULL,
     .view =
@@ -77,15 +77,15 @@ static struct node_wsrep _wsrep =
     .bootstrap = false
 };
 
-static const char* _wsrep_view_status_str[WSREP_VIEW_MAX] =
+static const char* wsrep_view_status_str[WSREP_VIEW_MAX] =
 {
     "PRIMARY",
     "NON-PRIMARY",
     "DISCONNECTED"
 };
 
-#define _WSREP_CAPABILITIES_MAX ((int)sizeof(wsrep_cap_t) * 8) // bitmask
-static const char* _wsrep_capabilities_str[_WSREP_CAPABILITIES_MAX] =
+#define WSREP_CAPABILITIES_MAX ((int)sizeof(wsrep_cap_t) * 8) // bitmask
+static const char* wsrep_capabilities_str[WSREP_CAPABILITIES_MAX] =
 {
     "MULTI-MASTER",
     "CERTIFICATION",
@@ -116,14 +116,14 @@ static const char* _wsrep_capabilities_str[_WSREP_CAPABILITIES_MAX] =
  *              group out of order for SST tricks, so we record it out of order.
  */
 static enum wsrep_cb_status
-_wsrep_connected_cb(void*                    const x,
-                    const wsrep_view_info_t* const v)
+wsrep_connected_cb(void*                    const x,
+                   const wsrep_view_info_t* const v)
 {
     char gtid_str[WSREP_GTID_STR_LEN + 1];
     wsrep_gtid_print(&v->state_id, gtid_str, sizeof(gtid_str));
 
     NODE_INFO("connect_cb(): Connected at %s to %s group of %d member(s)",
-              gtid_str, _wsrep_view_status_str[v->status], v->memb_num);
+              gtid_str, wsrep_view_status_str[v->status], v->memb_num);
 
     struct node_wsrep* const wsrep = ((struct node_ctx*)x)->wsrep;
 
@@ -143,7 +143,7 @@ _wsrep_connected_cb(void*                    const x,
 /**
  * logs view data */
 static void
-_wsrep_log_view(const struct wsrep_view* v)
+wsrep_log_view(const struct wsrep_view* v)
 {
     char gtid[WSREP_GTID_STR_LEN + 1];
     wsrep_gtid_print(&v->state_id, gtid, sizeof(gtid));
@@ -153,16 +153,16 @@ _wsrep_log_view(const struct wsrep_view* v)
     int written = 0;
     size_t space_left = sizeof(caps);
     int i;
-    for (i = 0; i < _WSREP_CAPABILITIES_MAX && space_left > 0; i++)
+    for (i = 0; i < WSREP_CAPABILITIES_MAX && space_left > 0; i++)
     {
         wsrep_cap_t const f = 1u << i;
 
         if (!(f & v->capabilities)) continue;
 
-        if (_wsrep_capabilities_str[i])
+        if (wsrep_capabilities_str[i])
         {
             written += snprintf(&caps[written], space_left, "%s|",
-                                _wsrep_capabilities_str[i]);
+                                wsrep_capabilities_str[i]);
         }
         else
         {
@@ -198,7 +198,7 @@ _wsrep_log_view(const struct wsrep_view* v)
         "capabilities: %s\n"
         "protocol version: %d\n"
         "members(%d):\n%s",
-        gtid, _wsrep_view_status_str[v->status],
+        gtid, wsrep_view_status_str[v->status],
         caps,
         v->proto_ver,
         v->memb_num, members_list);
@@ -211,11 +211,11 @@ _wsrep_log_view(const struct wsrep_view* v)
  *              strictly before the call and all subsequent - striclty after.
  */
 static enum wsrep_cb_status
-_wsrep_view_cb(void*                    const x,
-               void*                    const r,
-               const wsrep_view_info_t* const v,
-               const char*              const state,
-               size_t                   const state_len)
+wsrep_view_cb(void*                    const x,
+              void*                    const r,
+              const wsrep_view_info_t* const v,
+              const char*              const state,
+              size_t                   const state_len)
 {
     (void)r;
     (void)state;
@@ -299,7 +299,7 @@ _wsrep_view_cb(void*                    const x,
 
     // and now log the info
 
-    _wsrep_log_view(&wsrep->view);
+    wsrep_log_view(&wsrep->view);
 
 cleanup:
     pthread_mutex_unlock(&wsrep->view.mtx);
@@ -310,7 +310,7 @@ cleanup:
 /**
  * REPLICATION: callback is called by provider when the node becomes SYNCED */
 static enum wsrep_cb_status
-_wsrep_synced_cb(void* const x)
+wsrep_synced_cb(void* const x)
 {
     struct node_wsrep* const wsrep = ((struct node_ctx*)x)->wsrep;
 
@@ -337,10 +337,10 @@ node_wsrep_open(const struct node_options* const opts,
                 const wsrep_gtid_t*        const current_gtid,
                 void*                      const app_ctx)
 {
-    if (_wsrep.instance != NULL) return NULL; // already initialized
+    if (s_wsrep.instance != NULL) return NULL; // already initialized
 
     wsrep_status_t err;
-    err = wsrep_load(opts->provider, &_wsrep.instance, node_log_cb);
+    err = wsrep_load(opts->provider, &s_wsrep.instance, node_log_cb);
     if (WSREP_OK != err)
     {
         if (strcasecmp(opts->provider, WSREP_NONE))
@@ -375,9 +375,9 @@ node_wsrep_open(const struct node_options* const opts,
         .state          = NULL, // unused
 
         .logger_cb      = node_log_cb,
-        .connected_cb   = _wsrep_connected_cb,
-        .view_cb        = _wsrep_view_cb,
-        .synced_cb      = _wsrep_synced_cb,
+        .connected_cb   = wsrep_connected_cb,
+        .view_cb        = wsrep_view_cb,
+        .synced_cb      = wsrep_synced_cb,
         .encrypt_cb     = NULL, // not implemented ATM
 
         .apply_cb       = node_worker_apply_cb,
@@ -387,33 +387,33 @@ node_wsrep_open(const struct node_options* const opts,
         .sst_donate_cb  = node_sst_donate_cb
     };
 
-    wsrep_t* wsrep = _wsrep.instance;
+    wsrep_t* wsrep = s_wsrep.instance;
 
     err = wsrep->init(wsrep, &args);
 
     if (WSREP_OK != err)
     {
         NODE_ERROR("wsrep::init() failed: %d, must shutdown", err);
-        node_wsrep_close(&_wsrep);
+        node_wsrep_close(&s_wsrep);
         return NULL;
     }
 
-    _wsrep.bootstrap = opts->bootstrap;
+    s_wsrep.bootstrap = opts->bootstrap;
     err = wsrep->connect(wsrep,
                          "wsrep_cluster",
                          opts->address,
                          NULL,
-                         _wsrep.bootstrap);
+                         s_wsrep.bootstrap);
 
     if (WSREP_OK != err)
     {
         NODE_ERROR("wsrep::connect(%s) failed: %d, must shutdown",
                    opts->address, err);
-        node_wsrep_close(&_wsrep);
+        node_wsrep_close(&s_wsrep);
         return NULL;
     }
 
-    return &_wsrep;
+    return &s_wsrep;
 }
 
 void

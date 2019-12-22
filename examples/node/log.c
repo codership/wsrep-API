@@ -23,7 +23,7 @@
 
 wsrep_log_level_t node_log_max_level = WSREP_LOG_INFO;
 
-static const char* node_log_level_str[WSREP_LOG_DEBUG + 2] =
+static const char* log_level_str[WSREP_LOG_DEBUG + 2] =
 {
     "FATAL: ",
     "ERROR: ",
@@ -34,9 +34,9 @@ static const char* node_log_level_str[WSREP_LOG_DEBUG + 2] =
 };
 
 static inline void
-_timestamp_and_log(const char* const prefix, // to distinguish the source of msg
-                   int         const severity,
-                   const char* const msg)
+log_timestamp_and_log(const char* const prefix, // source of msg
+                      int         const severity,
+                      const char* const msg)
 {
     struct tm      date;
     struct timeval time;
@@ -51,7 +51,7 @@ _timestamp_and_log(const char* const prefix, // to distinguish the source of msg
             date.tm_year + 1900, date.tm_mon + 1, date.tm_mday,
             date.tm_hour, date.tm_min, date.tm_sec,
             (int)time.tv_usec / 1000,
-            prefix, node_log_level_str[severity], msg
+            prefix, log_level_str[severity], msg
         );
 
     fflush (log_file);
@@ -61,7 +61,7 @@ void
 node_log_cb(wsrep_log_level_t const severity, const char* const msg)
 {
     /* REPLICATION: let provider log messages be prefixed with 'wsrep'*/
-    _timestamp_and_log("wsrep", severity, msg);
+    log_timestamp_and_log("wsrep", severity, msg);
 }
 
 void
@@ -79,8 +79,8 @@ node_log(wsrep_log_level_t const severity,
 
     /* provide file:func():line info only if debug logging is on */
     if (NODE_DO_LOG_DEBUG) {
-        int const len = snprintf (str, (size_t)max_string, "%s:%s():%d: ",
-                                  file, function, line);
+        int const len = snprintf(str, (size_t)max_string, "%s:%s():%d: ",
+                                 file, function, line);
         str += len;
         max_string -= len;
     }
@@ -96,5 +96,5 @@ node_log(wsrep_log_level_t const severity,
     va_end(ap);
 
     /* actual logging */
-    _timestamp_and_log(" node", severity, string);
+    log_timestamp_and_log(" node", severity, string);
 }

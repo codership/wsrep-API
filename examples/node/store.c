@@ -34,7 +34,7 @@ struct node_store
 };
 
 // don't bother with dynamic allocation with a single store
-static struct node_store _store =
+static struct node_store s_store =
 {
     .gtid       = {{{0,}}, WSREP_SEQNO_UNDEFINED} /*WSREP_GTID_UNDEFINED*/,
     .gtid_mtx   = PTHREAD_MUTEX_INITIALIZER,
@@ -42,15 +42,15 @@ static struct node_store _store =
     .trx_id_mtx = PTHREAD_MUTEX_INITIALIZER
 };
 
-static struct node_store* _store_ptr = &_store;
+static struct node_store* store_ptr = &s_store;
 
 // stub
 node_store_t*
 node_store_open(const struct node_options* const opts)
 {
     (void)opts;
-    node_store_t* ret = _store_ptr;
-    _store_ptr = NULL;
+    node_store_t* ret = store_ptr;
+    store_ptr = NULL;
     return ret;
 }
 
@@ -109,21 +109,6 @@ node_store_execute(node_store_t*   const store,
 {
     assert(store);
     (void)store;
-
-#if 0 /* to avoid the need to implement a hashtable in C,
-       * we skip this step for now */
-    int ret;
-    ret = pthread_mutex_lock(&store->trx_id_mtx);
-    if (!ret)
-    {
-        *trx_id = store->trx_id++;
-        pthread_mutex_unlock(&store->trx_id_mtx);
-    }
-    else
-    {
-        return ret;
-    }
-#endif
 
     size_t const key_len = sizeof(uint64_t);
     size_t const alloc_size = sizeof(wsrep_buf_t) + key_len + ws->len;

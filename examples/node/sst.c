@@ -25,13 +25,13 @@
 #include <string.h> // strdup()
 #include <unistd.h> // usleep()
 
-static const char* const _sst_request = "fake SST";
+static const char* const sst_request = "fake SST";
 
 /**
  * Helper: creates detached thread */
 static int
-_sst_create_thread(void* (*thread_routine) (void*),
-                   void* const thread_arg)
+sst_create_thread(void* (*thread_routine) (void*),
+                  void* const thread_arg)
 {
     pthread_t thr;
     pthread_attr_t attr;
@@ -43,13 +43,13 @@ _sst_create_thread(void* (*thread_routine) (void*),
 
 /**
  * Helper: creates detached thread and waits for it to call
- *         _sst_sync_with_parent() */
+ *         sst_sync_with_parent() */
 static void
-_sst_create_and_sync(const char*      const role,
-                     pthread_mutex_t* const mtx,
-                     pthread_cond_t*  const cond,
-                     void* (*thread_routine) (void*),
-                     void*            const thread_arg)
+sst_create_and_sync(const char*      const role,
+                    pthread_mutex_t* const mtx,
+                    pthread_cond_t*  const cond,
+                    void* (*thread_routine) (void*),
+                    void*            const thread_arg)
 {
     int ret = pthread_mutex_lock(mtx);
     if (ret)
@@ -58,7 +58,7 @@ _sst_create_and_sync(const char*      const role,
         abort();
     }
 
-    ret = _sst_create_thread(thread_routine, thread_arg);
+    ret = sst_create_thread(thread_routine, thread_arg);
     if (ret)
     {
         NODE_FATAL("Failed to create detached %s thread: %d (%s)",
@@ -81,9 +81,9 @@ _sst_create_and_sync(const char*      const role,
  * Helper: syncs with parent thread and allows it to continue and return
  *         asynchronously */
 static void
-_sst_sync_with_parent(const char*      role,
-                      pthread_mutex_t* mtx,
-                      pthread_cond_t*  cond)
+sst_sync_with_parent(const char*      role,
+                     pthread_mutex_t* mtx,
+                     pthread_cond_t*  cond)
 {
     int ret = pthread_mutex_lock(mtx);
     if (ret)
@@ -98,20 +98,20 @@ _sst_sync_with_parent(const char*      role,
     pthread_mutex_unlock(mtx);
 }
 
-static pthread_mutex_t _joiner_mtx  = PTHREAD_MUTEX_INITIALIZER;
-static pthread_cond_t  _joiner_cond = PTHREAD_COND_INITIALIZER;
+static pthread_mutex_t sst_joiner_mtx  = PTHREAD_MUTEX_INITIALIZER;
+static pthread_cond_t  sst_joiner_cond = PTHREAD_COND_INITIALIZER;
 
 /**
  * waits for SST completion and signals the provider to continue */
 static void*
-_joiner_thread(void* const app_ctx)
+sst_joiner_thread(void* const app_ctx)
 {
     assert(app_ctx);
 
     struct node_ctx* const node  = app_ctx;
 
     /* this allows parent callback to return */
-    _sst_sync_with_parent("JOINER", &_joiner_mtx, &_joiner_cond);
+    sst_sync_with_parent("JOINER", &sst_joiner_mtx, &sst_joiner_cond);
 
     /* REPLICATION: once SST is received, the GTID which it brought is recorded
      *              the store, Get it from there to tell provider what we have */
@@ -150,7 +150,7 @@ node_sst_request_cb (void*   const app_ctx,
 
     /* REPLICATION: 1. prepare the node to receive SST */
 
-    char* const sst_str = strdup(_sst_request);
+    char* const sst_str = strdup(sst_request);
     if (sst_str)
     {
         *sst_req = sst_str;
@@ -173,18 +173,18 @@ node_sst_request_cb (void*   const app_ctx,
 
     /* REPLICATION 2. start the "joiner" thread that will wait for SST and
      *                report its success to provider, and syncronize with it. */
-    _sst_create_and_sync("JOINER", &_joiner_mtx, &_joiner_cond,
-                         _joiner_thread, app_ctx);
+    sst_create_and_sync("JOINER", &sst_joiner_mtx, &sst_joiner_cond,
+                        sst_joiner_thread, app_ctx);
 
     /* 3. return SST request to provider */
 
     return WSREP_CB_SUCCESS;
 }
 
-static pthread_mutex_t _donor_mtx  = PTHREAD_MUTEX_INITIALIZER;
-static pthread_cond_t  _donor_cond = PTHREAD_COND_INITIALIZER;
+static pthread_mutex_t sst_donor_mtx  = PTHREAD_MUTEX_INITIALIZER;
+static pthread_cond_t  sst_donor_cond = PTHREAD_COND_INITIALIZER;
 
-struct _donor_ctx
+struct sst_donor_ctx
 {
     wsrep_gtid_t     state;
     struct node_ctx* node;
@@ -194,12 +194,12 @@ struct _donor_ctx
 /**
  * donates SST and signals provider that it is done. */
 static void*
-_donor_thread(void* const args)
+sst_donor_thread(void* const args)
 {
-    struct _donor_ctx const ctx = *(struct _donor_ctx*)args;
+    struct sst_donor_ctx const ctx = *(struct sst_donor_ctx*)args;
 
     /* having saved the context, we can allow parent callback to return */
-    _sst_sync_with_parent("DONOR", &_donor_mtx, &_donor_cond);
+    sst_sync_with_parent("DONOR", &sst_donor_mtx, &sst_donor_cond);
 
     /* REPLICATION: signal provider that we are done */
     wsrep_t* const wsrep = node_wsrep_provider(ctx.node->wsrep);
@@ -220,21 +220,21 @@ node_sst_donate_cb (void*               const app_ctx,
     (void)recv_ctx;
     (void)state;
 
-    if (strncmp(_sst_request, str_msg->ptr, str_msg->len))
+    if (strncmp(sst_request, str_msg->ptr, str_msg->len))
     {
         NODE_ERROR("Can't serve non-trivial SST: not implemented");
         return WSREP_CB_FAILURE;
     }
 
-    struct _donor_ctx ctx =
+    struct sst_donor_ctx ctx =
     {
         .node   = app_ctx,
         .state  = *state_id,
         .bypass = bypass
     };
 
-    _sst_create_and_sync("DONOR", &_donor_mtx, &_donor_cond,
-                         _donor_thread, &ctx);
+    sst_create_and_sync("DONOR", &sst_donor_mtx, &sst_donor_cond,
+                        sst_donor_thread, &ctx);
 
     return WSREP_CB_SUCCESS;
 }

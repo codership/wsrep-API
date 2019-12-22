@@ -27,58 +27,58 @@
  * getopt_long() declarations begin
  */
 
-#define NODE_NA no_argument
-#define NODE_RA required_argument
-#define NODE_OA optional_argument
+#define OPTS_NA no_argument
+#define OPTS_RA required_argument
+#define OPTS_OA optional_argument
 
 typedef enum opt
 {
-    NODE_OPT_NOOPT     = 0,
-    NODE_OPT_ADDRESS   = 'a',
-    NODE_OPT_BOOTSTRAP = 'b',
-    NODE_OPT_DELAY     = 'd',
-    NODE_OPT_DATA_DIR  = 'f',
-    NODE_OPT_HELP      = 'h',
-    NODE_OPT_PERIOD    = 'i',
-    NODE_OPT_MASTERS   = 'm',
-    NODE_OPT_NAME      = 'n',
-    NODE_OPT_OPTIONS   = 'o',
-    NODE_OPT_BASE_PORT = 'p',
-    NODE_OPT_RECORDS   = 'r',
-    NODE_OPT_SLAVES    = 's',
-    NODE_OPT_BASE_HOST = 't',
-    NODE_OPT_PROVIDER  = 'v',
-    NODE_OPT_REC_SIZE  = 'w'
+    OPTS_NOOPT     = 0,
+    OPTS_ADDRESS   = 'a',
+    OPTS_BOOTSTRAP = 'b',
+    OPTS_DELAY     = 'd',
+    OPTS_DATA_DIR  = 'f',
+    OPTS_HELP      = 'h',
+    OPTS_PERIOD    = 'i',
+    OPTS_MASTERS   = 'm',
+    OPTS_NAME      = 'n',
+    OPTS_OPTIONS   = 'o',
+    OPTS_BASE_PORT = 'p',
+    OPTS_RECORDS   = 'r',
+    OPTS_SLAVES    = 's',
+    OPTS_BASE_HOST = 't',
+    OPTS_PROVIDER  = 'v',
+    OPTS_REC_SIZE  = 'w'
 }
-      opt_t;
+    opt_t;
 
-static struct option _opts[] =
+static struct option s_opts[] =
 {
-    { "address",   NODE_RA, NULL, NODE_OPT_ADDRESS   },
-    { "bootstrap", NODE_NA, NULL, NODE_OPT_BOOTSTRAP },
-    { "delay",     NODE_RA, NULL, NODE_OPT_DELAY     },
-    { "storage",   NODE_RA, NULL, NODE_OPT_DATA_DIR  },
-    { "help",      NODE_NA, NULL, NODE_OPT_HELP      },
-    { "period",    NODE_RA, NULL, NODE_OPT_PERIOD    },
-    { "masters",   NODE_RA, NULL, NODE_OPT_MASTERS   },
-    { "name",      NODE_RA, NULL, NODE_OPT_NAME      },
-    { "options",   NODE_RA, NULL, NODE_OPT_OPTIONS,  },
-    { "base-port", NODE_RA, NULL, NODE_OPT_BASE_PORT },
-    { "records",   NODE_RA, NULL, NODE_OPT_RECORDS   },
-    { "slaves",    NODE_RA, NULL, NODE_OPT_SLAVES    },
-    { "base-host", NODE_RA, NULL, NODE_OPT_BASE_HOST },
-    { "provider",  NODE_RA, NULL, NODE_OPT_PROVIDER  },
-    { "size",      NODE_RA, NULL, NODE_OPT_REC_SIZE  },
+    { "address",   OPTS_RA, NULL, OPTS_ADDRESS   },
+    { "bootstrap", OPTS_NA, NULL, OPTS_BOOTSTRAP },
+    { "delay",     OPTS_RA, NULL, OPTS_DELAY     },
+    { "storage",   OPTS_RA, NULL, OPTS_DATA_DIR  },
+    { "help",      OPTS_NA, NULL, OPTS_HELP      },
+    { "period",    OPTS_RA, NULL, OPTS_PERIOD    },
+    { "masters",   OPTS_RA, NULL, OPTS_MASTERS   },
+    { "name",      OPTS_RA, NULL, OPTS_NAME      },
+    { "options",   OPTS_RA, NULL, OPTS_OPTIONS,  },
+    { "base-port", OPTS_RA, NULL, OPTS_BASE_PORT },
+    { "records",   OPTS_RA, NULL, OPTS_RECORDS   },
+    { "slaves",    OPTS_RA, NULL, OPTS_SLAVES    },
+    { "base-host", OPTS_RA, NULL, OPTS_BASE_HOST },
+    { "provider",  OPTS_RA, NULL, OPTS_PROVIDER  },
+    { "size",      OPTS_RA, NULL, OPTS_REC_SIZE  },
     { NULL, 0, NULL, 0 }
 };
 
-static const char* _optstring = "a:d:f:hi:m:n:o:p:r:s:t:v:w:";
+static const char* opts_string = "a:d:f:hi:m:n:o:p:r:s:t:v:w:";
 
 /*
  * getopt_long() declarations end
  */
 
-static const struct node_options _defaults =
+static const struct node_options opts_defaults =
 {
     .provider  = "none",
     .address   = "gcomm://",
@@ -97,18 +97,18 @@ static const struct node_options _defaults =
 };
 
 static int
-_check_conversion(int cond, const char* ptr, int idx)
+opts_check_conversion(int cond, const char* ptr, int idx)
 {
     if (!cond || errno || (*ptr != '\0' && !isspace(*ptr)))
     {
-        fprintf(stderr, "Bad value for %s option.\n", _opts[idx].name);
+        fprintf(stderr, "Bad value for %s option.\n", s_opts[idx].name);
         return EINVAL;
     }
     return 0;
 }
 
 static void
-_print_help(FILE* out, const char* prog_name)
+opts_print_help(FILE* out, const char* prog_name)
 {
     fprintf(
         out,
@@ -127,7 +127,7 @@ _print_help(FILE* out, const char* prog_name)
         "                             connect to it\n"
         "  -p, --base-port=NUM        base port which the node shall listen for\n"
         "                             connections from other members. This port will be\n"
-        "                             used for replication, port-1 for IST and port-2\n"
+        "                             used for replication, port+1 for IST and port+2\n"
         "                             for SST. Default: 4567\n"
         "  -m, --masters=NUM          number of concurrent master workers.\n"
         "  -s, --slaves=NUM           number of concurrent slave workers.\n"
@@ -140,11 +140,12 @@ _print_help(FILE* out, const char* prog_name)
         "                             Default: 'Yes' if --address is not given, 'No'\n"
         "                             otherwise.\n"
         "  -i, --period               period in seconds between performance stats output\n"
+        "\n"
         , prog_name);
 }
 
 static void
-_print_config(FILE* out, const struct node_options* opts)
+opts_print_config(FILE* out, const struct node_options* opts)
 {
     fprintf(
         out,
@@ -173,7 +174,7 @@ _print_config(FILE* out, const struct node_options* opts)
 int
 node_options_read(int argc, char* argv[], struct node_options* opts)
 {
-    *opts = _defaults;
+    *opts = opts_defaults;
 
     int   opt = 0;
     int   opt_idx = 0;
@@ -183,71 +184,74 @@ node_options_read(int argc, char* argv[], struct node_options* opts)
     bool address_given   = false;
     bool bootstrap_given = false;
 
-    while ((opt = getopt_long(argc, argv, _optstring, _opts, &opt_idx)) != -1)
+    while ((opt = getopt_long(argc, argv, opts_string, s_opts, &opt_idx)) != -1)
     {
         switch (opt)
         {
-        case NODE_OPT_ADDRESS:
+        case OPTS_ADDRESS:
             address_given = strcmp(opts->address, optarg);
             opts->address = optarg;
             break;
-        case NODE_OPT_BOOTSTRAP:
+        case OPTS_BOOTSTRAP:
             bootstrap_given = true;
             opts->bootstrap = true;
             break;
-        case NODE_OPT_DELAY:
+        case OPTS_DELAY:
             opts->delay = strtol(optarg, &endptr, 10);
-            if ((ret = _check_conversion(opts->delay >= 0, endptr, opt_idx)))
+            if ((ret = opts_check_conversion(opts->delay >= 0, endptr, opt_idx)))
                 goto err;
             break;
-        case NODE_OPT_DATA_DIR:
+        case OPTS_DATA_DIR:
             opts->data_dir = optarg;
             break;
-        case NODE_OPT_HELP:
+        case OPTS_HELP:
             ret = 1;
             goto help;
-        case NODE_OPT_PERIOD:
+        case OPTS_PERIOD:
             opts->period = strtol(optarg, &endptr, 10);
-            if ((ret = _check_conversion(opts->period > 0, endptr, opt_idx)))
+            if ((ret = opts_check_conversion(opts->period > 0, endptr, opt_idx)))
                 goto err;
             break;
-        case NODE_OPT_MASTERS:
+        case OPTS_MASTERS:
             opts->masters = strtol(optarg, &endptr, 10);
-            if ((ret = _check_conversion(opts->masters >= 0, endptr, opt_idx)))
+            if ((ret = opts_check_conversion(opts->masters >= 0, endptr,
+                                             opt_idx)))
                 goto err;
             break;
-        case NODE_OPT_NAME:
+        case OPTS_NAME:
             opts->name = optarg;
             break;
-        case NODE_OPT_OPTIONS:
+        case OPTS_OPTIONS:
             opts->options = optarg;
             break;
-        case NODE_OPT_BASE_PORT:
+        case OPTS_BASE_PORT:
             opts->base_port = strtol(optarg, &endptr, 10);
-            if ((ret = _check_conversion(
+            if ((ret = opts_check_conversion(
                      opts->base_port > 0 && opts->base_port < 65536,
                      endptr, opt_idx)))
                 goto err;
             break;
-        case NODE_OPT_RECORDS:
+        case OPTS_RECORDS:
             opts->records = strtol(optarg, &endptr, 10);
-            if ((ret = _check_conversion(opts->records >= 0, endptr, opt_idx)))
+            if ((ret = opts_check_conversion(opts->records >= 0, endptr,
+                                             opt_idx)))
                 goto err;
             break;
-        case NODE_OPT_SLAVES:
+        case OPTS_SLAVES:
             opts->slaves = strtol(optarg, &endptr, 10);
-            if ((ret = _check_conversion(opts->slaves > 0, endptr, opt_idx)))
+            if ((ret = opts_check_conversion(opts->slaves > 0, endptr, opt_idx)))
                 goto err;
             break;
-        case NODE_OPT_BASE_HOST:
+        case OPTS_BASE_HOST:
             opts->base_host = optarg;
             break;
-        case NODE_OPT_PROVIDER:
+        case OPTS_PROVIDER:
             opts->provider = optarg;
             break;
-        case NODE_OPT_REC_SIZE:
+        case OPTS_REC_SIZE:
             opts->rec_size = strtol(optarg, &endptr, 10);
-            if ((ret = _check_conversion(opts->rec_size > 0, endptr, opt_idx)))
+            if ((ret = opts_check_conversion(opts->rec_size > 0, endptr,
+                                             opt_idx)))
                 goto err;
             break;
         default:
@@ -257,7 +261,7 @@ node_options_read(int argc, char* argv[], struct node_options* opts)
 
 help:
     if (ret) {
-        _print_help(stderr, argv[0]);
+        opts_print_help(stderr, argv[0]);
     }
     else
     {
@@ -265,7 +269,7 @@ help:
         {
             opts->bootstrap = !address_given;
         }
-        _print_config(stdout, opts);
+        opts_print_config(stdout, opts);
         opts->delay  *= 1000;    /* convert to microseconds for usleep() */
     }
 
