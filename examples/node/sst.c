@@ -18,14 +18,17 @@
 
 #include "ctx.h"
 #include "log.h"
+#include "socket.h"
 
 #include <assert.h>
 #include <pthread.h>
+#include <stdio.h>  // snprintf()
 #include <stdlib.h> // abort()
 #include <string.h> // strdup()
 #include <unistd.h> // usleep()
 
-static const char* const sst_request = "fake SST";
+#define SST_LEN (WSREP_GTID_STR_LEN + 1) /* SST will only carry GTID */
+static char const SST_BYPASS_CODE[SST_LEN] = { 0, };
 
 /**
  * Helper: creates detached thread */
@@ -101,83 +104,152 @@ sst_sync_with_parent(const char*      role,
 static pthread_mutex_t sst_joiner_mtx  = PTHREAD_MUTEX_INITIALIZER;
 static pthread_cond_t  sst_joiner_cond = PTHREAD_COND_INITIALIZER;
 
+struct sst_joiner_ctx
+{
+    struct node_ctx* node;
+    node_socket_t*   socket;
+};
+
 /**
  * waits for SST completion and signals the provider to continue */
 static void*
-sst_joiner_thread(void* const app_ctx)
+sst_joiner_thread(void* ctx)
 {
-    assert(app_ctx);
+    assert(ctx);
 
-    struct node_ctx* const node  = app_ctx;
+    struct node_ctx* const node   = ((struct sst_joiner_ctx*)ctx)->node;
+    node_socket_t* const   listen = ((struct sst_joiner_ctx*)ctx)->socket;
+    ctx = NULL; /* may be unusable after next statement */
 
     /* this allows parent callback to return */
     sst_sync_with_parent("JOINER", &sst_joiner_mtx, &sst_joiner_cond);
 
-    /* REPLICATION: once SST is received, the GTID which it brought is recorded
-     *              the store, Get it from there to tell provider what we have */
-    wsrep_gtid_t sst_gtid;
-    node_store_gtid(node->store, &sst_gtid);
+    wsrep_gtid_t state_gtid = WSREP_GTID_UNDEFINED;
+    char recv_buf[SST_LEN];
+    int err = -1;
 
-    /* Had we sent a real SST request, we'd be waiting for it from some donor
-     * node. Since we lack that synchronizatoin opportunity, we'd do a dirty
-     * trick and "poll" provider for success (reaching JOINER state). */
+    /* REPLICATION: wait for donor to connect and send the state snapshot */
+    node_socket_t* const connected = node_socket_accept(listen);
+    if (!connected) goto end;
+
+    err = node_socket_recv_bytes(connected, recv_buf, SST_LEN);
+    if (err) goto end;
+
+    if (memcmp(recv_buf, SST_BYPASS_CODE, SST_LEN))
+    {
+        /* REPLICATION: it is not a bypass SST, it carries a state */
+        err = wsrep_gtid_scan(recv_buf, sizeof(recv_buf), &state_gtid);
+        if (err < 0)
+        {
+            recv_buf[sizeof(recv_buf) - 1] = '\0'; /* 0-terminate the string */
+            NODE_ERROR("Could not find valid GTID in the received data: %s",
+                       recv_buf);
+            state_gtid = WSREP_GTID_UNDEFINED;
+            goto end;
+        }
+        else
+        {
+            err = 0;
+        }
+
+        /* REPLICATION: install the newly received state. */
+        node_store_init(node->store, &state_gtid);
+    }
+    else
+    {
+        /* REPLICATION: it was a bypass, the node will receive missing data via
+         *              IST. It starts with the state it currently has. */
+        node_store_gtid(node->store, &state_gtid);
+    }
+
+end:
+    assert(err <= 0);
+    node_socket_close(connected);
+    node_socket_close(listen);
+
+    /* REPLICATION: tell provider that SST is received */
     wsrep_status_t sst_ret;
     wsrep_t* const wsrep = node_wsrep_provider(node->wsrep);
-    do
-    {
-        usleep(10000); // 10ms
-        /* REPLICATION: tell provider that SST is received */
-        sst_ret = wsrep->sst_received(wsrep, &sst_gtid, NULL, 0);
-    }
-    while (WSREP_CONN_FAIL == sst_ret);
+    sst_ret = wsrep->sst_received(wsrep, &state_gtid, NULL, err);
 
-    if (sst_ret)
+    if (WSREP_OK != sst_ret)
     {
-        NODE_FATAL("Failed to report SST received: %d", sst_ret);
+        NODE_FATAL("Failed to report completion of SST: %d", sst_ret);
         abort();
     }
 
     return NULL;
 }
 
-// stub
 enum wsrep_cb_status
 node_sst_request_cb (void*   const app_ctx,
                      void**  const sst_req,
                      size_t* const sst_req_len)
 {
+    static int const SST_PORT_OFFSET = 2;
+
     assert(app_ctx);
+    struct node_ctx* const node = app_ctx;
+    const struct node_options* const opts = node->opts;
+
+    char* sst_str = NULL;
 
     /* REPLICATION: 1. prepare the node to receive SST */
-
-    char* const sst_str = strdup(sst_request);
-    if (sst_str)
+    uint16_t const sst_port = (uint16_t)(opts->base_port + SST_PORT_OFFSET);
+    size_t const sst_len = strlen(opts->base_host)
+        + 1 /* ':' */ + 5 /* max port len */ + 1 /* \0 */;
+    sst_str = malloc(sst_len);
+    if (!sst_str)
     {
-        *sst_req = sst_str;
-        *sst_req_len = strlen(sst_str) + 1;
-
-        /* Temporary hack: use the GTID of the cluster to which we connected
-         * to initialize store GTID. In reality store GTID should be initialized
-         * by real SST. */
-        struct node_ctx* const node = app_ctx;
-        wsrep_gtid_t state_id;
-        node_wsrep_connected_gtid(node->wsrep, &state_id);
-        node_store_init(node->store, &state_id);
+        NODE_ERROR("Failed to allocate %zu bytes for SST request", sst_len);
+        goto end;
     }
-    else
+
+    /* write in request the address at which we listen */
+    int ret = snprintf(sst_str, sst_len, "%s:%hu", opts->base_host, sst_port);
+    if (ret < 0 || (size_t)ret >= sst_len)
     {
-        *sst_req = NULL;
-        *sst_req_len = 0;
-        return WSREP_CB_FAILURE;
+        free(sst_str);
+        sst_str = NULL;
+        NODE_ERROR("Failed to write a SST request");
+        goto end;
+    }
+
+    node_socket_t* const socket = node_socket_listen(NULL, sst_port);
+    if (!socket)
+    {
+        free(sst_str);
+        sst_str = NULL;
+        NODE_ERROR("Failed to listen at %s", sst_str);
+        goto end;
     }
 
     /* REPLICATION 2. start the "joiner" thread that will wait for SST and
      *                report its success to provider, and syncronize with it. */
+    struct sst_joiner_ctx ctx =
+        {
+            .node   = node,
+            .socket = socket
+        };
     sst_create_and_sync("JOINER", &sst_joiner_mtx, &sst_joiner_cond,
-                        sst_joiner_thread, app_ctx);
+                        sst_joiner_thread, &ctx);
 
-    /* 3. return SST request to provider */
+    NODE_INFO("Waiting for SST at %s", sst_str);
 
+end:
+    if (sst_str)
+    {
+        *sst_req     = sst_str;
+        *sst_req_len = strlen(sst_str) + 1;
+    }
+    else
+    {
+        *sst_req     = NULL;
+        *sst_req_len = 0;
+        return WSREP_CB_FAILURE;
+    }
+
+    /* REPLICATION 3. return SST request to provider */
     return WSREP_CB_SUCCESS;
 }
 
@@ -188,6 +260,7 @@ struct sst_donor_ctx
 {
     wsrep_gtid_t     state;
     struct node_ctx* node;
+    node_socket_t*   socket;
     wsrep_bool_t     bypass;
 };
 
@@ -198,17 +271,46 @@ sst_donor_thread(void* const args)
 {
     struct sst_donor_ctx const ctx = *(struct sst_donor_ctx*)args;
 
-    /* having saved the context, we can allow parent callback to return */
+    int err = 0;
+    char state_buf[SST_LEN];
+
+    if (ctx.bypass)
+    {
+        /* REPLICATION: if bypass is true, there is no need to send snapshot,
+         *              just signal the joiner that snapshot is not needed and
+         *              it can proceed to apply IST.
+         *              We'll send a special code for that. */
+        memcpy(state_buf, SST_BYPASS_CODE, sizeof(state_buf));
+    }
+    else
+    {
+        /* REPLICATION: if bypass is false, we need to send a full state snapshot
+         *              Get hold of the state, which is currently just GTID
+         *              NOTICE that while parent is waiting, the store is in a
+         *              quiescent state, provider blocking any modifications. */
+        wsrep_gtid_t state;
+        node_store_gtid(ctx.node->store, &state);
+
+        err = wsrep_gtid_print(&state, state_buf, sizeof(state_buf));
+    }
+
+    /* REPLICATION: after getting hold of the state we can allow parent callback
+     *              to return and the node to resume its normal operation */
     sst_sync_with_parent("DONOR", &sst_donor_mtx, &sst_donor_cond);
 
-    /* REPLICATION: signal provider that we are done */
+    if (err >= 0)
+        err = node_socket_send_bytes(ctx.socket, state_buf, sizeof(state_buf));
+
+    node_socket_close(ctx.socket);
+
+    /* REPLICATION: signal provider the success of the operation */
+    assert(err <= 0);
     wsrep_t* const wsrep = node_wsrep_provider(ctx.node->wsrep);
-    wsrep->sst_sent(wsrep, &ctx.state, 0);
+    wsrep->sst_sent(wsrep, &ctx.state, err);
 
     return NULL;
 }
 
-// stub
 enum wsrep_cb_status
 node_sst_donate_cb (void*               const app_ctx,
                     void*               const recv_ctx,
@@ -220,18 +322,27 @@ node_sst_donate_cb (void*               const app_ctx,
     (void)recv_ctx;
     (void)state;
 
-    if (strncmp(sst_request, str_msg->ptr, str_msg->len))
-    {
-        NODE_ERROR("Can't serve non-trivial SST: not implemented");
-        return WSREP_CB_FAILURE;
-    }
-
     struct sst_donor_ctx ctx =
     {
         .node   = app_ctx,
         .state  = *state_id,
         .bypass = bypass
     };
+
+    /* we are expecting a human-readable 0-terminated string  */
+    void* p = memchr(str_msg->ptr, '\0', str_msg->len);
+    if (!p)
+    {
+        NODE_ERROR("Received a badly formed State Transfer Request.");
+        /* REPLICATION: in case of a failure we return the status to provider, so
+         *              that the joining node can be notified of it by cluster */
+        return WSREP_CB_FAILURE;
+    }
+
+    const char* addr = str_msg->ptr;
+    ctx.socket = node_socket_connect(addr);
+
+    if (!ctx.socket) return WSREP_CB_FAILURE;
 
     sst_create_and_sync("DONOR", &sst_donor_mtx, &sst_donor_cond,
                         sst_donor_thread, &ctx);

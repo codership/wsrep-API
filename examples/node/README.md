@@ -43,6 +43,10 @@ Implements reading configuration options from the command line, does not have
 anything related to wsrep API, but shows which additional parameters must be
 configured for the program to make use of wsrep clustering.
 
+#### socket.*
+Network sockets boilerplate code for setting TCP connections between processes
+(for SST). Has nothing wsrep-related and can be ignored.
+
 #### sst.*
 Defines **SST callbacks** for the wsrep provider and shows how to asynchronously
 implement state snapshot transfer (yes, you don't want to spend eternity in

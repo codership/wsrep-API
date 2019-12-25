@@ -96,17 +96,6 @@ static const struct node_options opts_defaults =
     .bootstrap = true
 };
 
-static int
-opts_check_conversion(int cond, const char* ptr, int idx)
-{
-    if (!cond || errno || (*ptr != '\0' && !isspace(*ptr)))
-    {
-        fprintf(stderr, "Bad value for %s option.\n", s_opts[idx].name);
-        return EINVAL;
-    }
-    return 0;
-}
-
 static void
 opts_print_help(FILE* out, const char* prog_name)
 {
@@ -169,6 +158,17 @@ opts_print_config(FILE* out, const struct node_options* opts)
         opts->masters, opts->slaves, opts->rec_size, opts->records, opts->delay,
         opts->period, opts->bootstrap ? "Yes" : "No"
         );
+}
+
+static int
+opts_check_conversion(int cond, const char* ptr, int idx)
+{
+    if (!cond || errno || (*ptr != '\0' && !isspace(*ptr)))
+    {
+        fprintf(stderr, "Bad value for %s option.\n", s_opts[idx].name);
+        return EINVAL;
+    }
+    return 0;
 }
 
 int
