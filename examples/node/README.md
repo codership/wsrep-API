@@ -14,7 +14,7 @@ https://github.com/codership/wsrep-lib
 
 Process-wise the program consists of an endless main loop that periodically
 samples and prints performance stats and a configurable number of "master" and
-"slave" threads, with master threads loop processing "transactions" and
+"slave" threads, with master threads loop executing "transactions" and
 replicating resulting "write sets" and slave threads receiving and processing
 the write sets from other nodes.
 
