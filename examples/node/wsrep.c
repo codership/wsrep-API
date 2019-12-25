@@ -246,7 +246,7 @@ wsrep_view_cb(void*                    const x,
                 WSREP_SEQNO_UNDEFINED == store_gtid.seqno)
             {
                 /* initialize store GTID from scratch */
-                node_store_init(node->store, &v->state_id);
+                node_store_init_gtid(node->store, &v->state_id);
                 break;
             }
             /* fallthrough *//* to regular store GTID update */

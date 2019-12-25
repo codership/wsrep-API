@@ -31,6 +31,7 @@ struct node_store
     pthread_mutex_t gtid_mtx;
     wsrep_trx_id_t  trx_id;
     pthread_mutex_t trx_id_mtx;
+    char*           snapshot;
 };
 
 // don't bother with dynamic allocation with a single store
@@ -39,7 +40,8 @@ static struct node_store s_store =
     .gtid       = {{{0,}}, WSREP_SEQNO_UNDEFINED} /*WSREP_GTID_UNDEFINED*/,
     .gtid_mtx   = PTHREAD_MUTEX_INITIALIZER,
     .trx_id     = 0,
-    .trx_id_mtx = PTHREAD_MUTEX_INITIALIZER
+    .trx_id_mtx = PTHREAD_MUTEX_INITIALIZER,
+    .snapshot   = NULL
 };
 
 static struct node_store* store_ptr = &s_store;
@@ -62,9 +64,117 @@ node_store_close(struct node_store* store)
     (void)store;
 }
 
+#define STORE_STATE_MIN_LEN (WSREP_GTID_STR_LEN + 1)
+
 int
-node_store_init(struct node_store*  const store,
-                const wsrep_gtid_t* const gtid)
+node_store_init_state(struct node_store*  const store,
+                      const void*         const state,
+                      size_t              const state_len)
+{
+    /* First, decipher state */
+    if (state_len <= WSREP_UUID_STR_LEN + 1 /* : */ + 1 /* \0 */)
+    {
+        NODE_ERROR("State snapshot too short: %zu", state_len);
+        return -1;
+    }
+
+    wsrep_gtid_t state_gtid;
+    int ret;
+    ret = wsrep_gtid_scan(state, state_len, &state_gtid);
+    if (ret < 0)
+    {
+        char state_str[STORE_STATE_MIN_LEN] = { 0, };
+        memcpy(state_str, state, sizeof(state_str) - 1);
+        NODE_ERROR("Could not find valid GTID in the received data: %s",
+                    state_str);
+        return -1;
+    }
+
+    ret = pthread_mutex_lock(&store->gtid_mtx);
+    if (ret)
+    {
+        NODE_FATAL("Failed to lock store GTID");
+        abort();
+    }
+
+    /* just some sanity check */
+    if (0 == wsrep_uuid_compare(&state_gtid.uuid, &store->gtid.uuid) &&
+        state_gtid.seqno < store->gtid.seqno)
+    {
+        NODE_ERROR("Received snapshot that is in the past: my seqno %lld,"
+                   " received seqno: %lld",
+                   (long long)store->gtid.seqno, (long long)state_gtid.seqno);
+        ret = -1;
+    }
+    else
+    {
+        store->gtid = state_gtid;
+        ret = 0;
+    }
+
+    pthread_mutex_unlock(&store->gtid_mtx);
+
+    return ret;
+}
+
+int
+node_store_acquire_state(node_store_t* const store,
+                         const void**  const state,
+                         size_t*       const state_len)
+{
+    char gtid_str[STORE_STATE_MIN_LEN] = { 0, };
+
+    int ret = pthread_mutex_lock(&store->gtid_mtx);
+    if (ret)
+    {
+        NODE_FATAL("Failed to lock store GTID");
+        abort();
+    }
+
+    if (!store->snapshot)
+    {
+        ret = wsrep_gtid_print(&store->gtid, gtid_str, sizeof(gtid_str));
+        if (ret > 0) store->snapshot = strdup(gtid_str);
+        if (!store->snapshot) ret = -ENOMEM;
+    }
+    else
+    {
+        ret = -EAGAIN;
+    }
+
+    pthread_mutex_unlock(&store->gtid_mtx);
+
+    if (ret > 0)
+    {
+        assert(strlen(store->snapshot) == (size_t)ret);
+        *state     = store->snapshot;
+        *state_len = (size_t)ret + 1 /* \0 */;
+        ret        = 0;
+    }
+
+    return ret;
+}
+
+void
+node_store_release_state(node_store_t* const store)
+{
+    int ret = pthread_mutex_lock(&store->gtid_mtx);
+    if (ret)
+    {
+        NODE_FATAL("Failed to lock store GTID");
+        abort();
+    }
+
+    assert(store->snapshot);
+    free(store->snapshot);
+    store->snapshot = 0;
+
+    pthread_mutex_unlock(&store->gtid_mtx);
+}
+
+int
+node_store_init_gtid(struct node_store*  const store,
+                     const wsrep_gtid_t* const gtid)
 {
     assert(store);
 
@@ -76,7 +186,20 @@ node_store_init(struct node_store*  const store,
         abort();
     }
 
-    store->gtid = *gtid;
+    if (0 == wsrep_uuid_compare(&WSREP_UUID_UNDEFINED, &store->gtid.uuid) &&
+        WSREP_SEQNO_UNDEFINED == store->gtid.seqno)
+    {
+        store->gtid = *gtid;
+    }
+    else
+    {
+        char gtid_str[WSREP_GTID_STR_LEN + 1] = { 0, };
+        wsrep_gtid_print(&store->gtid, gtid_str, sizeof(gtid_str));
+        NODE_FATAL("Attempt to initialize state GTID which is already "
+                   "initialized: %s", gtid_str);
+        abort();
+    }
+
     pthread_mutex_unlock(&store->gtid_mtx);
 
     return ret;
