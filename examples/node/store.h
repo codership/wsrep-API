@@ -38,9 +38,30 @@ extern void
 node_store_close(node_store_t* store);
 
 /**
- * initialize store (assign current GTID) */
+ * initialize store with a state */
 extern int
-node_store_init(node_store_t* store, const wsrep_gtid_t* gtid);
+node_store_init_state(node_store_t* store, const void* state, size_t state_len);
+
+/**
+ * Return a pointer to state snapshot that is guaranteed to be unchanged
+ * until node_store_release_state() is called.
+ *
+ * @param[out] state     pointer to state snapshot
+ * @param[out] state_len soze of state snapshot
+ */
+extern int
+node_store_acquire_state(node_store_t* store,
+                         const void** state, size_t* state_len);
+
+/**
+ * release state */
+extern void
+node_store_release_state(node_store_t* store);
+
+/**
+ * initialize store state gtid in case of bootstrapping the cluster */
+extern int
+node_store_init_gtid(node_store_t* store, const wsrep_gtid_t* gtid);
 
 /**
  * get the current GTID (last committed) */

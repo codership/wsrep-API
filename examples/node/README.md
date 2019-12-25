@@ -14,7 +14,7 @@ https://github.com/codership/wsrep-lib
 
 Process-wise the program consists of an endless main loop that periodically
 samples and prints performance stats and a configurable number of "master" and
-"slave" threads, with master threads loop processing "transactions" and
+"slave" threads, with master threads loop executing "transactions" and
 replicating resulting "write sets" and slave threads receiving and processing
 the write sets from other nodes.
 
@@ -42,6 +42,10 @@ not designed to return it still shows the deinitialization order.
 Implements reading configuration options from the command line, does not have
 anything related to wsrep API, but shows which additional parameters must be
 configured for the program to make use of wsrep clustering.
+
+#### socket.*
+Network sockets boilerplate code for setting TCP connections between processes
+(for SST). Has nothing wsrep-related and can be ignored.
 
 #### sst.*
 Defines **SST callbacks** for the wsrep provider and shows how to asynchronously
