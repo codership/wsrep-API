@@ -153,7 +153,7 @@ socket_create(int const fd)
 /**
  * Definition of function type with the signature of bind() and connect()
  */
-typedef int (*socket_act_fun_t) (int                    sock_fd,
+typedef int (*socket_act_fun_t) (int                    sfd,
                                  const struct sockaddr* addr,
                                  socklen_t              addrlen);
 
@@ -172,7 +172,8 @@ socket_bind_and_listen(int                    const sfd,
 
 /**
  * A "template" method to do the "right thing" with the addrinfo and create a
- * socket from it.
+ * socket from it. The "right thing" would normally be bind and listen for
+ * a server socket OR connect for a client socket.
  *
  * @param[in] info       addrinfo list, swallowed and deallocated
  * @param[in] action_fun the "right thing" to do on socket and struct sockaddr
@@ -196,7 +197,8 @@ socket_from_addrinfo(struct addrinfo* const info,
     int sfd;
     int err = 0;
 
-    /* iterate over addrinfo list and try to bind a listening socket */
+    /* Iterate over addrinfo list and try to apply action_fun on the resulting
+     * socket. Once successful, break loop. */
     struct addrinfo* addr;
     for (addr = info; addr != NULL; addr = addr->ai_next)
     {
@@ -219,7 +221,7 @@ socket_from_addrinfo(struct addrinfo* const info,
     {
         NODE_ERROR("Failed to %s to '%s%s%.0hu': %d (%s)",
                    action_str,
-                   orig_host, orig_port > 0 ? ":" : "",
+                   orig_host ? orig_host : "", orig_port > 0 ? ":" : "",
                    orig_port > 0 ? orig_port : 0, /* won't be printed if 0 */
                    err, strerror(err));
         return NULL;
