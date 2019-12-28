@@ -51,12 +51,16 @@ extern node_socket_t*
 node_socket_accept(node_socket_t* s);
 
 /**
- * Send a given number of bytes */
+ * Send a given number of bytes
+ * @return 0 or a negative error code
+ */
 extern int
 node_socket_send_bytes(node_socket_t* s, const void* buf, size_t len);
 
 /**
- * Receive a given number of bytes */
+ * Receive a given number of bytes
+ * @return 0 or a negative error code
+ */
 extern int
 node_socket_recv_bytes(node_socket_t* s, void* buf, size_t len);
 

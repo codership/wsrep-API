@@ -20,15 +20,14 @@
 #include "log.h"
 #include "socket.h"
 
+#include <arpa/inet.h> // htonl()
 #include <assert.h>
+#include <errno.h>
 #include <pthread.h>
 #include <stdio.h>  // snprintf()
 #include <stdlib.h> // abort()
 #include <string.h> // strdup()
 #include <unistd.h> // usleep()
-
-#define SST_LEN (WSREP_GTID_STR_LEN + 1) /* SST will only carry GTID */
-static char const SST_BYPASS_CODE[SST_LEN] = { 0, };
 
 /**
  * Helper: creates detached thread */
@@ -125,42 +124,51 @@ sst_joiner_thread(void* ctx)
     sst_sync_with_parent("JOINER", &sst_joiner_mtx, &sst_joiner_cond);
 
     wsrep_gtid_t state_gtid = WSREP_GTID_UNDEFINED;
-    char recv_buf[SST_LEN];
     int err = -1;
 
     /* REPLICATION: wait for donor to connect and send the state snapshot */
     node_socket_t* const connected = node_socket_accept(listen);
     if (!connected) goto end;
 
-    err = node_socket_recv_bytes(connected, recv_buf, SST_LEN);
+    uint32_t state_len;
+    err = node_socket_recv_bytes(connected, &state_len, sizeof(state_len));
     if (err) goto end;
 
-    if (memcmp(recv_buf, SST_BYPASS_CODE, SST_LEN))
+    state_len = ntohl(state_len);
+    if (state_len > 0)
     {
-        /* REPLICATION: it is not a bypass SST, it carries a state */
-        err = wsrep_gtid_scan(recv_buf, sizeof(recv_buf), &state_gtid);
-        if (err < 0)
+        /* REPLICATION: get the state of state_len size */
+        void* state = malloc(state_len);
+        if (state)
         {
-            recv_buf[sizeof(recv_buf) - 1] = '\0'; /* 0-terminate the string */
-            NODE_ERROR("Could not find valid GTID in the received data: %s",
-                       recv_buf);
-            state_gtid = WSREP_GTID_UNDEFINED;
-            goto end;
+            err = node_socket_recv_bytes(connected, state, state_len);
+            if (err)
+            {
+                free(state);
+                goto end;
+            }
+
+            /* REPLICATION: install the newly received state. */
+            err = node_store_init_state(node->store, state, state_len);
+            free(state);
+            if (err) goto end;
         }
         else
         {
-            err = 0;
+            NODE_ERROR("Failed to allocate %zu bytes for state snapshot.",
+                       state_len);
+            err = -ENOMEM;
+            goto end;
         }
-
-        /* REPLICATION: install the newly received state. */
-        node_store_init(node->store, &state_gtid);
     }
     else
     {
         /* REPLICATION: it was a bypass, the node will receive missing data via
          *              IST. It starts with the state it currently has. */
-        node_store_gtid(node->store, &state_gtid);
     }
+
+    /* REPLICATION: find gtid of the received state to report to provider */
+    node_store_gtid(node->store, &state_gtid);
 
 end:
     assert(err <= 0);
@@ -272,15 +280,17 @@ sst_donor_thread(void* const args)
     struct sst_donor_ctx const ctx = *(struct sst_donor_ctx*)args;
 
     int err = 0;
-    char state_buf[SST_LEN];
+    const void* state;
+    size_t state_len;
 
     if (ctx.bypass)
     {
         /* REPLICATION: if bypass is true, there is no need to send snapshot,
          *              just signal the joiner that snapshot is not needed and
-         *              it can proceed to apply IST.
-         *              We'll send a special code for that. */
-        memcpy(state_buf, SST_BYPASS_CODE, sizeof(state_buf));
+         *              it can proceed to apply IST. We'll do it by sending 0
+         *              for the size of snapshot */
+        state = NULL;
+        state_len = 0;
     }
     else
     {
@@ -288,10 +298,8 @@ sst_donor_thread(void* const args)
          *              Get hold of the state, which is currently just GTID
          *              NOTICE that while parent is waiting, the store is in a
          *              quiescent state, provider blocking any modifications. */
-        wsrep_gtid_t state;
-        node_store_gtid(ctx.node->store, &state);
-
-        err = wsrep_gtid_print(&state, state_buf, sizeof(state_buf));
+        err = node_store_acquire_state(ctx.node->store, &state, &state_len);
+        if (state_len > UINT32_MAX) err = -ERANGE;
     }
 
     /* REPLICATION: after getting hold of the state we can allow parent callback
@@ -299,12 +307,25 @@ sst_donor_thread(void* const args)
     sst_sync_with_parent("DONOR", &sst_donor_mtx, &sst_donor_cond);
 
     if (err >= 0)
-        err = node_socket_send_bytes(ctx.socket, state_buf, sizeof(state_buf));
+    {
+        uint32_t tmp = htonl((uint32_t)state_len);
+        err = node_socket_send_bytes(ctx.socket, &tmp, sizeof(tmp));
+    }
+
+    if (state_len != 0)
+    {
+        if (err >= 0)
+        {
+            assert(state);
+            err = node_socket_send_bytes(ctx.socket, state, state_len);
+        }
+
+        node_store_release_state(ctx.node->store);
+    }
 
     node_socket_close(ctx.socket);
 
     /* REPLICATION: signal provider the success of the operation */
-    assert(err <= 0);
     wsrep_t* const wsrep = node_wsrep_provider(ctx.node->wsrep);
     wsrep->sst_sent(wsrep, &ctx.state, err);
 
