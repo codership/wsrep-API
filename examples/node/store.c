@@ -18,6 +18,7 @@
 
 #include "log.h"
 
+#include <arpa/inet.h> // htonl()
 #include <assert.h>
 #include <errno.h>
 #include <pthread.h>
@@ -32,6 +33,8 @@ struct node_store
     wsrep_trx_id_t  trx_id;
     pthread_mutex_t trx_id_mtx;
     char*           snapshot;
+    uint32_t        members_num;
+    wsrep_uuid_t*   members;
 };
 
 // don't bother with dynamic allocation with a single store
@@ -41,7 +44,9 @@ static struct node_store s_store =
     .gtid_mtx   = PTHREAD_MUTEX_INITIALIZER,
     .trx_id     = 0,
     .trx_id_mtx = PTHREAD_MUTEX_INITIALIZER,
-    .snapshot   = NULL
+    .snapshot   = NULL,
+    .members_num= 0,
+    .members    = NULL
 };
 
 static struct node_store* store_ptr = &s_store;
@@ -64,7 +69,6 @@ node_store_close(struct node_store* store)
     (void)store;
 }
 
-#define STORE_STATE_MIN_LEN (WSREP_GTID_STR_LEN + 1)
 
 int
 node_store_init_state(struct node_store*  const store,
@@ -72,7 +76,8 @@ node_store_init_state(struct node_store*  const store,
                       size_t              const state_len)
 {
     /* First, decipher state */
-    if (state_len <= WSREP_UUID_STR_LEN + 1 /* : */ + 1 /* \0 */)
+    if (state_len <= sizeof(wsrep_uuid_t)*2 /* at least two members */ +
+        WSREP_UUID_STR_LEN + 1 /* : */ + 1 /* \0 */)
     {
         NODE_ERROR("State snapshot too short: %zu", state_len);
         return -1;
@@ -83,12 +88,48 @@ node_store_init_state(struct node_store*  const store,
     ret = wsrep_gtid_scan(state, state_len, &state_gtid);
     if (ret < 0)
     {
-        char state_str[STORE_STATE_MIN_LEN] = { 0, };
+        char state_str[WSREP_GTID_STR_LEN + 1] = { 0, };
         memcpy(state_str, state, sizeof(state_str) - 1);
         NODE_ERROR("Could not find valid GTID in the received data: %s",
                     state_str);
         return -1;
     }
+
+    ret++; /* \0 */
+    if ((state_len - (size_t)ret) < sizeof(uint32_t))
+    {
+        NODE_ERROR("State snapshot does not contain number of members");
+        return -1;
+    }
+
+    const char* ptr = ((char*)state) + ret;
+    uint32_t num;
+    memcpy(&num, ptr, sizeof(num));
+    num = ntohl(num);
+    ptr += sizeof(num);
+    ret += (int)sizeof(num);
+
+    if (num < 2)
+    {
+        NODE_ERROR("Bogus number of members %u", num);
+        return -1;
+    }
+
+    if ((state_len - (size_t)ret) < num*sizeof(wsrep_uuid_t))
+    {
+        NODE_ERROR("State snapshot does not contain all membership: "
+                   "%zu < %zu", state - (size_t)ret, num*sizeof(wsrep_uuid_t));
+        return -1;
+    }
+
+    wsrep_uuid_t* new_members = calloc(sizeof(wsrep_uuid_t), num);
+    if (!new_members)
+    {
+        NODE_ERROR("Could not allocate new membership");
+        return -ENOMEM;
+    }
+
+    memcpy(new_members, ptr, sizeof(wsrep_uuid_t) * num);
 
     ret = pthread_mutex_lock(&store->gtid_mtx);
     if (ret)
@@ -97,18 +138,22 @@ node_store_init_state(struct node_store*  const store,
         abort();
     }
 
-    /* just some sanity check */
+    /* just a sanity check */
     if (0 == wsrep_uuid_compare(&state_gtid.uuid, &store->gtid.uuid) &&
         state_gtid.seqno < store->gtid.seqno)
     {
         NODE_ERROR("Received snapshot that is in the past: my seqno %lld,"
                    " received seqno: %lld",
                    (long long)store->gtid.seqno, (long long)state_gtid.seqno);
+        free(new_members);
         ret = -1;
     }
     else
     {
-        store->gtid = state_gtid;
+        free(store->members);
+        store->members_num = num;
+        store->members     = new_members;
+        store->gtid        = state_gtid;
         ret = 0;
     }
 
@@ -122,8 +167,6 @@ node_store_acquire_state(node_store_t* const store,
                          const void**  const state,
                          size_t*       const state_len)
 {
-    char gtid_str[STORE_STATE_MIN_LEN] = { 0, };
-
     int ret = pthread_mutex_lock(&store->gtid_mtx);
     if (ret)
     {
@@ -133,12 +176,52 @@ node_store_acquire_state(node_store_t* const store,
 
     if (!store->snapshot)
     {
-        ret = wsrep_gtid_print(&store->gtid, gtid_str, sizeof(gtid_str));
-        if (ret > 0) store->snapshot = strdup(gtid_str);
-        if (!store->snapshot) ret = -ENOMEM;
+        size_t const memb_len = store->members_num * sizeof(wsrep_uuid_t);
+        size_t const buf_len  = WSREP_GTID_STR_LEN + 1 + sizeof(uint32_t)
+            + memb_len;
+
+        store->snapshot = malloc(buf_len);
+
+        if (store->snapshot)
+        {
+            char*  ptr  = store->snapshot;
+
+            ret = wsrep_gtid_print(&store->gtid, ptr, buf_len);
+            if (ret > 0)
+            {
+                assert((size_t)ret < buf_len);
+
+                ptr[ret] = '\0';
+                ret++;
+                ptr += ret;
+                assert((size_t)ret < buf_len);
+
+                uint32_t num = htonl(store->members_num);
+                memcpy(ptr, &num, sizeof(num));
+                ptr += sizeof(num);
+                ret += (int)sizeof(num);
+                assert((size_t)ret < buf_len);
+
+                memcpy(ptr, store->members, memb_len);
+                ret += (int)memb_len;
+                assert((size_t)ret <= buf_len);
+            }
+            else
+            {
+                NODE_ERROR("Failed to record GTID: %d (%s)", ret,strerror(-ret));
+                free(store->snapshot);
+                store->snapshot = 0;
+            }
+        }
+        else
+        {
+            NODE_ERROR("Failed to allocate snapshot buffer of size %zu",buf_len);
+            ret = -ENOMEM;
+        }
     }
     else
     {
+        assert(0); /* provider should prevent such situation */
         ret = -EAGAIN;
     }
 
@@ -146,9 +229,8 @@ node_store_acquire_state(node_store_t* const store,
 
     if (ret > 0)
     {
-        assert(strlen(store->snapshot) == (size_t)ret);
         *state     = store->snapshot;
-        *state_len = (size_t)ret + 1 /* \0 */;
+        *state_len = (size_t)ret;
         ret        = 0;
     }
 
@@ -173,10 +255,12 @@ node_store_release_state(node_store_t* const store)
 }
 
 int
-node_store_init_gtid(struct node_store*  const store,
-                     const wsrep_gtid_t* const gtid)
+node_store_update_membership(struct node_store*       const store,
+                             const wsrep_view_info_t* const v)
 {
     assert(store);
+    assert(WSREP_VIEW_PRIMARY == v->status);
+        assert(v->memb_num > 0);
 
     int ret;
     ret = pthread_mutex_lock(&store->gtid_mtx);
@@ -186,19 +270,50 @@ node_store_init_gtid(struct node_store*  const store,
         abort();
     }
 
-    if (0 == wsrep_uuid_compare(&WSREP_UUID_UNDEFINED, &store->gtid.uuid) &&
-        WSREP_SEQNO_UNDEFINED == store->gtid.seqno)
+    bool const continuation = v->state_id.seqno == store->gtid.seqno + 1 &&
+        0 == wsrep_uuid_compare(&v->state_id.uuid, &store->gtid.uuid);
+
+    bool const initialization = WSREP_SEQNO_UNDEFINED == store->gtid.seqno &&
+        0 == wsrep_uuid_compare(&WSREP_UUID_UNDEFINED, &store->gtid.uuid);
+
+    if (!(continuation || initialization))
     {
-        store->gtid = *gtid;
-    }
-    else
-    {
-        char gtid_str[WSREP_GTID_STR_LEN + 1] = { 0, };
-        wsrep_gtid_print(&store->gtid, gtid_str, sizeof(gtid_str));
-        NODE_FATAL("Attempt to initialize state GTID which is already "
-                   "initialized: %s", gtid_str);
+        char store_str[WSREP_GTID_STR_LEN + 1] = { 0, };
+        wsrep_gtid_print(&store->gtid, store_str, sizeof(store_str));
+        char view_str[WSREP_GTID_STR_LEN + 1] = { 0, };
+        wsrep_gtid_print(&v->state_id, view_str, sizeof(view_str));
+
+        NODE_FATAL("Attempt to initialize store GTID from incompatible view:\n"
+                   "\tstore: %s\n"
+                   "\tview:  %s",
+                   store_str, view_str);
         abort();
     }
+
+    wsrep_uuid_t* const new_members = calloc(sizeof(wsrep_uuid_t),
+                                             (size_t)v->memb_num);
+    if (!new_members)
+    {
+        NODE_FATAL("Could not allocate new members array");
+        abort();
+    }
+
+    int i;
+    for (i = 0; i < v->memb_num; i++)
+    {
+        new_members[i] = v->members[i].id;
+    }
+
+    /* REPLICATION: at this point we should compare old and new memberships and
+     *              rollback all streaming transactions from the partitioned
+     *              members, if any. But we don't support it in this program yet.
+     */
+
+    free(store->members);
+
+    store->members     = new_members;
+    store->members_num = (uint32_t)v->memb_num;
+    store->gtid        = v->state_id;
 
     pthread_mutex_unlock(&store->gtid_mtx);
 
