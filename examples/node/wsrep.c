@@ -225,42 +225,15 @@ wsrep_view_cb(void*                    const x,
 
     if (WSREP_VIEW_PRIMARY == v->status)
     {
-        wsrep_gtid_t store_gtid;
-        node_store_gtid(node->store, &store_gtid);
-
-        /* REPLICATION: this node bootstrapped the cluster and this is the first
-         *              PRIMARY view it received. It has bootstrapped the cluster
-         *              a) either to continue from a known storage postion and
-         *                 then view GTID should be store GTID + 1 and store
-         *                 GTID seqno needs to be updated.
-         *              b) or from scratch, and then the store GTID should be
-         *                 undefined and needs to be initialized with the view
-         *                 GTID. This is the only case where we can use
-         *                 node_store_init() besides SST receiver.*/
-        switch (node->wsrep->bootstrap)
+        /* REPLICATION: membership change is a totally ordered event and as such
+         *              should be a part of the state, like changes to the
+         *              database. */
+        int err = node_store_update_membership(node->store, v);
+        if (err)
         {
-        case true:
-            node->wsrep->bootstrap = false; /* do it only once */
-
-            if (!wsrep_uuid_compare(&store_gtid.uuid, &WSREP_UUID_UNDEFINED) &&
-                WSREP_SEQNO_UNDEFINED == store_gtid.seqno)
-            {
-                /* initialize store GTID from scratch */
-                node_store_init_gtid(node->store, &v->state_id);
-                break;
-            }
-            /* fallthrough *//* to regular store GTID update */
-        case false:
-            if (!wsrep_uuid_compare(&store_gtid.uuid, &v->state_id.uuid))
-            {
-                /* continue sequence */
-                node_store_update_gtid(node->store, &v->state_id);
-            }
-            else
-            {
-                NODE_FATAL("View and store UUIDs don't match.");
-                abort();
-            }
+            NODE_FATAL("Failed to update membership in store: %d (%s)",
+                       err, strerror(-err));
+            abort();
         }
     }
 
@@ -273,7 +246,7 @@ wsrep_view_cb(void*                    const x,
         abort();
     }
 
-    // below we'll just copy the data for future reference (if need be):
+    /* below we'll just copy the data for future reference (if need be): */
 
     size_t const memb_size = (size_t)v->memb_num * sizeof(wsrep_member_info_t);
     void* const tmp = realloc(wsrep->view.members, memb_size);
@@ -297,7 +270,7 @@ wsrep_view_cb(void*                    const x,
     wsrep->view.memb_num     = v->memb_num;
     wsrep->view.my_idx       = v->my_idx;
 
-    // and now log the info
+    /* and now log the info */
 
     wsrep_log_view(&wsrep->view);
 
