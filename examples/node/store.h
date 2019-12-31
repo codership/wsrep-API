@@ -59,9 +59,9 @@ extern void
 node_store_release_state(node_store_t* store);
 
 /**
- * initialize store state gtid in case of bootstrapping the cluster */
+ * inform store about new membership */
 extern int
-node_store_init_gtid(node_store_t* store, const wsrep_gtid_t* gtid);
+node_store_update_membership(node_store_t* store, const wsrep_view_info_t* v);
 
 /**
  * get the current GTID (last committed) */
