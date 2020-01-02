@@ -22,9 +22,13 @@
 #include <assert.h>
 #include <errno.h>
 #include <pthread.h>
+#include <stddef.h>   // ptrdiff_t
 #include <stdint.h>   // uintptr_t
 #include <stdlib.h>   // abort()
 #include <string.h>   // memset()
+
+typedef wsrep_uuid_t member_t;
+typedef uint32_t     record_t;
 
 struct node_store
 {
@@ -34,48 +38,144 @@ struct node_store
     pthread_mutex_t trx_id_mtx;
     char*           snapshot;
     uint32_t        members_num;
-    wsrep_uuid_t*   members;
+    member_t*       members;
+    uint32_t        records_num;
+    record_t*       records;
 };
 
-// don't bother with dynamic allocation with a single store
-static struct node_store s_store =
-{
-    .gtid       = {{{0,}}, WSREP_SEQNO_UNDEFINED} /*WSREP_GTID_UNDEFINED*/,
-    .gtid_mtx   = PTHREAD_MUTEX_INITIALIZER,
-    .trx_id     = 0,
-    .trx_id_mtx = PTHREAD_MUTEX_INITIALIZER,
-    .snapshot   = NULL,
-    .members_num= 0,
-    .members    = NULL
-};
-
-static struct node_store* store_ptr = &s_store;
-
-// stub
 node_store_t*
 node_store_open(const struct node_options* const opts)
 {
-    (void)opts;
-    node_store_t* ret = store_ptr;
-    store_ptr = NULL;
+    struct node_store* ret = calloc(1, sizeof(struct node_store));
+
+    if (ret)
+    {
+        ret->records = malloc((size_t)opts->records * sizeof(*ret->records));
+
+        if (ret->records)
+        {
+            ret->gtid = WSREP_GTID_UNDEFINED;
+            pthread_mutex_init(&ret->gtid_mtx, NULL);
+            pthread_mutex_init(&ret->trx_id_mtx, NULL);
+            ret->records_num = (uint32_t)opts->records;
+
+            uint32_t i;
+            for (i = 0; i < ret->records_num; i++)
+            {
+                ret->records[i] = i;
+            }
+        }
+        else
+        {
+            free(ret);
+            ret = NULL;
+        }
+    }
+
     return ret;
 }
 
-// stub
 void
 node_store_close(struct node_store* store)
 {
     assert(store);
-    (void)store;
+    assert(store->records);
+    pthread_mutex_destroy(&store->gtid_mtx);
+    pthread_mutex_destroy(&store->trx_id_mtx);
+    free(store->records);
+    free(store->members);
+    free(store);
 }
 
+/**
+ * deserializes membership from snapshot */
+static int
+store_new_members(const char* ptr, const char* const endptr,
+                  uint32_t* const num, member_t** const memb)
+{
+    memcpy(num, ptr, sizeof(*num));
+    *num = ntohl(*num);
+
+    if (*num < 2)
+    {
+        NODE_ERROR("Bogus number of members %u", *num);
+        return -1;
+    }
+
+    int ret = (int)sizeof(*num);
+    ptr += ret;
+
+    size_t const msize = sizeof(member_t) * *num;
+    if ((endptr - ptr) < (ptrdiff_t)msize)
+    {
+        NODE_ERROR("State snapshot does not contain all membership: "
+                   "%zd < %zu", endptr - ptr, msize);
+        return -1;
+    }
+
+    *memb = calloc(*num, sizeof(member_t));
+    if (!*memb)
+    {
+        NODE_ERROR("Could not allocate new membership");
+        return -ENOMEM;
+    }
+
+    memcpy(*memb, ptr, msize);
+
+    return ret + (int)msize;
+}
+
+/**
+ * deserializes records from snapshot */
+static int
+store_new_records(const char* ptr, const char* const endptr,
+                  uint32_t* const num, record_t** const rec)
+{
+    memcpy(num, ptr, sizeof(*num));
+    *num = ntohl(*num);
+
+    int ret = (int)sizeof(*num);
+    if (!*num)
+    {
+        *rec = NULL;
+        return ret;
+    }
+
+    ptr += ret;
+    size_t const rsize = sizeof(record_t) * *num;
+    if ((endptr - ptr) < (ptrdiff_t)rsize)
+    {
+        NODE_ERROR("State snapshot does not contain all records: "
+                   "%zu < %zu", endptr - ptr, rsize);
+        return -1;
+    }
+
+    *rec = calloc(*num, sizeof(record_t));
+    if (!*rec)
+    {
+        NODE_ERROR("Could not allocate new records");
+        return -ENOMEM;
+    }
+
+    memcpy(*rec, ptr, rsize);
+
+    uint32_t i;
+    for (i = 0; i < *num; i++)
+    {
+        /* Not doing it derectly from ptr due to potential alignment issues.
+         * Bulk memcpy() above is way more efficient */
+        (*rec)[i] = ntohl((*rec)[i]);
+    }
+
+    return ret + (int)rsize;
+}
 
 int
 node_store_init_state(struct node_store*  const store,
                       const void*         const state,
                       size_t              const state_len)
 {
-    /* First, decipher state */
+    /* First, desewrialize and prepare new state */
     if (state_len <= sizeof(wsrep_uuid_t)*2 /* at least two members */ +
         WSREP_UUID_STR_LEN + 1 /* : */ + 1 /* \0 */)
     {
@@ -102,34 +202,28 @@ node_store_init_state(struct node_store*  const store,
         return -1;
     }
 
-    const char* ptr = ((char*)state) + ret;
-    uint32_t num;
-    memcpy(&num, ptr, sizeof(num));
-    num = ntohl(num);
-    ptr += sizeof(num);
-    ret += (int)sizeof(num);
+    const char* ptr = ((char*)state);
+    const char* const endptr = ptr + state_len;
+    ptr += ret;
 
-    if (num < 2)
+    uint32_t m_num;
+    member_t* new_members;
+    ret = store_new_members(ptr, endptr, &m_num, &new_members);
+    if (ret < 0)
     {
-        NODE_ERROR("Bogus number of members %u", num);
-        return -1;
+        return ret;
     }
+    ptr += ret;
 
-    if ((state_len - (size_t)ret) < num*sizeof(wsrep_uuid_t))
+    uint32_t r_num;
+    record_t* new_records;
+    ret = store_new_records(ptr, endptr, &r_num, &new_records);
+    if (ret < 0)
     {
-        NODE_ERROR("State snapshot does not contain all membership: "
-                   "%zu < %zu", state - (size_t)ret, num*sizeof(wsrep_uuid_t));
-        return -1;
+        free(new_members);
+        return ret;
     }
-
-    wsrep_uuid_t* new_members = calloc(sizeof(wsrep_uuid_t), num);
-    if (!new_members)
-    {
-        NODE_ERROR("Could not allocate new membership");
-        return -ENOMEM;
-    }
-
-    memcpy(new_members, ptr, sizeof(wsrep_uuid_t) * num);
+    ptr += ret;
 
     ret = pthread_mutex_lock(&store->gtid_mtx);
     if (ret)
@@ -146,13 +240,17 @@ node_store_init_state(struct node_store*  const store,
                    " received seqno: %lld",
                    (long long)store->gtid.seqno, (long long)state_gtid.seqno);
         free(new_members);
+        free(new_records);
         ret = -1;
     }
     else
     {
         free(store->members);
-        store->members_num = num;
+        store->members_num = m_num;
         store->members     = new_members;
+        free(store->records);
+        store->records_num = r_num;
+        store->records     = new_records;
         store->gtid        = state_gtid;
         ret = 0;
     }
@@ -174,21 +272,28 @@ node_store_acquire_state(node_store_t* const store,
         abort();
     }
 
+    char*    ptr;
+    uint32_t num;
+
     if (!store->snapshot)
     {
-        size_t const memb_len = store->members_num * sizeof(wsrep_uuid_t);
-        size_t const buf_len  = WSREP_GTID_STR_LEN + 1 + sizeof(uint32_t)
-            + memb_len;
+        size_t const memb_len = store->members_num * sizeof(member_t);
+        size_t const rec_len  = store->records_num * sizeof(record_t);
+        size_t const buf_len  = WSREP_GTID_STR_LEN + 1
+            + sizeof(uint32_t) + memb_len
+            + sizeof(uint32_t) + rec_len;
 
         store->snapshot = malloc(buf_len);
 
         if (store->snapshot)
         {
-            char*  ptr  = store->snapshot;
+            ptr = store->snapshot;
 
+            /* state GTID */
             ret = wsrep_gtid_print(&store->gtid, ptr, buf_len);
             if (ret > 0)
             {
+                NODE_INFO("");
                 assert((size_t)ret < buf_len);
 
                 ptr[ret] = '\0';
@@ -196,14 +301,25 @@ node_store_acquire_state(node_store_t* const store,
                 ptr += ret;
                 assert((size_t)ret < buf_len);
 
-                uint32_t num = htonl(store->members_num);
+                /* membership */
+                num = htonl(store->members_num);
                 memcpy(ptr, &num, sizeof(num));
                 ptr += sizeof(num);
                 ret += (int)sizeof(num);
-                assert((size_t)ret < buf_len);
-
+                assert((size_t)ret + memb_len < buf_len);
                 memcpy(ptr, store->members, memb_len);
+                ptr += memb_len;
                 ret += (int)memb_len;
+                assert((size_t)ret + sizeof(uint32_t) <= buf_len);
+
+                /* records */
+                num = htonl(store->records_num);
+                memcpy(ptr, &num, sizeof(num));
+                ptr += sizeof(num);
+                ret += (int)sizeof(num);
+                assert((size_t)ret + rec_len < buf_len);
+                memcpy(ptr, store->records, rec_len);
+                ret += (int)rec_len;
                 assert((size_t)ret <= buf_len);
             }
             else
@@ -229,6 +345,18 @@ node_store_acquire_state(node_store_t* const store,
 
     if (ret > 0)
     {
+        uint32_t i;
+        record_t* r = (record_t*)ptr; /* poorly aligned */
+
+        num = ntohl(num); /* back from network order */
+        for (i = 0; i < num; i++)
+        {
+            record_t wa; /* well aligned */
+            memcpy(&wa, &r[i], sizeof(wa));
+            wa = htonl(wa);
+            memcpy(&r[i], &wa, sizeof(wa));
+        }
+        NODE_INFO("\n\nPrepared snapshot of %u records\n\n", num);
         *state     = store->snapshot;
         *state_len = (size_t)ret;
         ret        = 0;
@@ -338,7 +466,16 @@ node_store_gtid(struct node_store* const store,
     pthread_mutex_unlock(&store->gtid_mtx);
 }
 
-// stub
+
+/* transaction context */
+struct store_trx_ctx
+{
+    uint32_t to;
+    record_t val;
+};
+
+union store_trx_ctx_aligned { struct store_trx_ctx a; wsrep_buf_t b; };
+
 int
 node_store_execute(node_store_t*   const store,
                    wsrep_trx_id_t* const trx_id,
@@ -346,11 +483,32 @@ node_store_execute(node_store_t*   const store,
                    wsrep_buf_t*    const ws)
 {
     assert(store);
-    (void)store;
 
-    size_t const key_len = sizeof(uint64_t);
-    size_t const alloc_size = sizeof(wsrep_buf_t) + key_len + ws->len;
-    char* buf = malloc(alloc_size);
+    uint32_t to, from;
+    record_t val;
+    int ret = pthread_mutex_lock(&store->gtid_mtx);
+    if (ret)
+    {
+        NODE_FATAL("Failed to lock store GTID");
+        abort();
+    }
+
+    /* Transaction: copy value from one random record to another
+     * and increment it by 1 */
+    to   = (uint32_t)rand() % store->records_num;
+    from = (uint32_t)rand() % store->records_num;
+    val  = store->records[from] + 1;
+
+    pthread_mutex_unlock(&store->gtid_mtx);
+
+    static size_t const key_parts_offset = sizeof(union store_trx_ctx_aligned);
+    size_t const key_vals_offset = key_parts_offset +
+        2 * sizeof(wsrep_buf_t); /* array of 2 key part structs */
+    size_t const ws_offset = key_vals_offset + 2 * sizeof(to); /* 2 key values */
+    size_t const ws_len = ws->len > sizeof(to) + sizeof(val) ?
+        ws->len : sizeof(to) + sizeof(val);
+    size_t const alloc_size = ws_offset + ws_len;
+    char*  const buf = malloc(alloc_size);
 
     /* store allocated memory address directly in trx_id to avoid implementing
      * hashtable between trx_id and allocated resource for now.
@@ -359,32 +517,51 @@ node_store_execute(node_store_t*   const store,
     *trx_id = (uintptr_t)buf;
     if (!buf)
     {
-        return ENOMEM;
+        return -ENOMEM;
     }
 
-    /* REPLICATION: creating a key part */
-    wsrep_buf_t* key_part = (wsrep_buf_t*)buf; // malloc'd, so well aligned
-    void* const key_ptr = buf + sizeof(wsrep_buf_t); // to avoid const cast
-    memcpy(key_ptr, trx_id, key_len); // this be sufficiently random key
-    key_part->ptr  = key_ptr;
-    key_part->len  = key_len;
+    /* record "prepared" transaction in transaction context for use in commit */
+    struct store_trx_ctx* trx = (struct store_trx_ctx*)buf;
+    trx->to  = to;
+    trx->val = val;
 
-    /* REPLICATION: recording a single key part in a key struct
+    to   = htonl(to);
+    from = htonl(from);
+    val  = htonl(val);
+
+    /* REPLICATION: creating key parts */
+    wsrep_buf_t* key_parts = (wsrep_buf_t*)(buf + key_parts_offset);
+    uint32_t*    key_vals  = (uint32_t*)   (buf + key_vals_offset);
+
+    memcpy(&key_vals[0], &from, sizeof(from));
+    key_parts[0].ptr = &key_vals[0];
+    key_parts[0].len = sizeof(from);
+
+    memcpy(&key_vals[1], &to, sizeof(to));
+    key_parts[1].ptr = &key_vals[1];
+    key_parts[1].len = sizeof(to);
+
+    /* REPLICATION: recording key parts in a key struct
      * NOTE: depending on data access granularity some applications may require
      *       multipart keys, e.g. <schema>:<table>:<row> in a SQL database.
-     *       Single part keys match hashtables and key-value stores */
-    key->key_parts     = key_part;
-    key->key_parts_num = 1;
+     *       Single part keys match hashtables and key-value stores.
+     *       Here we have two key parts representing two different single-part
+     *       keys which reference two different records. For convenience however
+     *       we'll return them as two parts in a single wsrep_key struct which
+     *       here serves only as a container. */
+    key->key_parts     = key_parts;
+    key->key_parts_num = 2;
 
-    /* filling the actual writeset */
-    void* const ws_ptr = buf + sizeof(wsrep_buf_t) + key_len; // avoid const cast
-    memset(ws_ptr, (int)*trx_id, ws->len);  // just initialize with something
+    /* REPLICATION: filling the actual writeset */
+    char* const ws_ptr = buf + ws_offset;
+    memcpy(ws_ptr, &to, sizeof(to));
+    memcpy(ws_ptr + sizeof(to), &val, sizeof(val));
     ws->ptr = ws_ptr;
+    ws->len = ws_len;
 
     return 0;
 }
 
-// stub
 int
 node_store_apply(node_store_t*      const store,
                  wsrep_trx_id_t*    const trx_id,
@@ -393,12 +570,101 @@ node_store_apply(node_store_t*      const store,
     assert(store);
     (void)store;
 
-    *trx_id = (uintptr_t)NULL; // not allocating any resources, no ID
-    (void)ws;
+    struct store_trx_ctx* const trx = malloc(sizeof(struct store_trx_ctx));
+    *trx_id = (uintptr_t)trx;
+    if (!trx)
+    {
+        return -ENOMEM;
+    }
+
+    /* prepare values for commit */
+    uint32_t to;
+    record_t val;
+
+    assert(ws->len >= sizeof(to) + sizeof(val));
+
+    memcpy(&to, ws->ptr, sizeof(to));
+    memcpy(&val, (char*)ws->ptr + sizeof(to), sizeof(val));
+
+    trx->to  = ntohl(to);
+    trx->val = ntohl(val);
+
+    assert(trx->to <= store->records_num);
+
     return 0;
 }
 
-// stub
+static uint32_t const store_fnv32_seed  = 2166136261;
+
+static inline uint32_t
+store_fnv32a(const void* buf, size_t const len, uint32_t seed)
+{
+    static uint32_t const fnv32_prime = 16777619;
+    const uint8_t* bp = (const uint8_t*)buf;
+    const uint8_t* const be = bp + len;
+
+    while (bp < be)
+    {
+        seed ^= *bp++;
+        seed *= fnv32_prime;
+    }
+
+    return seed;
+}
+
+
+static void
+store_checksum_state(node_store_t* store)
+{
+    uint32_t res = store_fnv32_seed;
+    uint32_t i;
+
+    for (i = 0; i < store->members_num; i++)
+    {
+        res = store_fnv32a(&store->members[i], sizeof(*store->members), res);
+    }
+
+    for (i = 0; i < store->records_num; i++)
+    {
+        uint32_t val = htonl(store->records[i]);
+        res = store_fnv32a(&val, sizeof(val), res);
+    }
+
+    res = store_fnv32a(&store->gtid.uuid, sizeof(store->gtid.uuid), res);
+
+    wsrep_seqno_t s = store->gtid.seqno;
+    for (i = 0; i < sizeof(s); i++)
+    {
+        char a = (char)(s & 0xff);
+        res = store_fnv32a(&a, sizeof(a), res);
+        s >>= 8;
+    }
+
+    NODE_INFO("\n\n\tSeqno: %lld; state hash: %#010x\n",
+              (long long)store->gtid.seqno, res);
+}
+
+static inline void
+store_update_gtid(node_store_t* const store, const wsrep_gtid_t* ws_gtid)
+{
+    assert(0 == wsrep_uuid_compare(&store->gtid.uuid, &ws_gtid->uuid));
+
+    store->gtid.seqno++;
+
+    if (store->gtid.seqno != ws_gtid->seqno)
+    {
+        NODE_FATAL("Out of order commit: expected %lld, got %lld",
+                   store->gtid.seqno, ws_gtid->seqno);
+        abort();
+    }
+
+    static wsrep_seqno_t const period = 0x1fffff; /* ~2M */
+    if (0 == (store->gtid.seqno & period))
+    {
+        store_checksum_state(store);
+    }
+}
+
 void
 node_store_commit(node_store_t*       const store,
                   wsrep_trx_id_t      const trx_id,
@@ -406,19 +672,35 @@ node_store_commit(node_store_t*       const store,
 {
     assert(store);
 
-    node_store_update_gtid(store, ws_gtid);
-    if (trx_id > 0) free((void*)trx_id);
+    struct store_trx_ctx* const trx = (struct store_trx_ctx*)trx_id;
+    assert(trx);
+
+    int ret;
+    ret = pthread_mutex_lock(&store->gtid_mtx);
+    if (ret)
+    {
+        NODE_FATAL("Failed to lock store GTID");
+        abort();
+    }
+
+    store_update_gtid(store, ws_gtid);
+
+    store->records[trx->to] = trx->val;
+
+    pthread_mutex_unlock(&store->gtid_mtx);
+
+    free(trx);
 }
 
-// stub
 void
 node_store_rollback(node_store_t*  store,
                     wsrep_trx_id_t trx_id)
 {
     assert(store);
     (void)store;
+    assert(trx_id);
 
-    if (trx_id > 0) free((void*)trx_id);
+    free((void*)trx_id); /* all resources allocated for trx are here */
 }
 
 void
@@ -435,15 +717,7 @@ node_store_update_gtid(node_store_t*       store,
         abort();
     }
 
-    assert(0 == wsrep_uuid_compare(&store->gtid.uuid, &ws_gtid->uuid));
-
-    store->gtid.seqno++;
-    if (store->gtid.seqno != ws_gtid->seqno)
-    {
-        NODE_FATAL("Out of order commit: expected %lld, got %lld",
-                   store->gtid.seqno, ws_gtid->seqno);
-        abort();
-    }
+    store_update_gtid(store, ws_gtid);
 
     pthread_mutex_unlock(&store->gtid_mtx);
 }

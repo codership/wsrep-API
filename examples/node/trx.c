@@ -38,14 +38,27 @@ node_trx_execute(node_store_t* const   store,
     /* REPLICATION: get wsrep handle for transaction */
     wsrep_ws_handle_t ws_handle = { trx_id, NULL };
 
-    /* REPLICATION: create a writeset for trx */
+    /* REPLICATION: create a writeset for trx: append keys */
     wsrep_status_t ret;
+    wsrep_key_t wk_referenced =  /* this key references unchanged record */
+        { .key_parts = &ws_key.key_parts[0], .key_parts_num = 1 };
     ret = wsrep->append_key(wsrep, &ws_handle,
-                            &ws_key,
+                            &wk_referenced,
                             1,    /* single key */
-                            WSREP_KEY_EXCLUSIVE,
+                            WSREP_KEY_REFERENCE,
                             false /* no need to make a copy */);
     if (ret) goto cleanup;
+
+    wsrep_key_t wk_updated =  /* this key references updated record */
+        { .key_parts = &ws_key.key_parts[1], .key_parts_num = 1 };
+    ret = wsrep->append_key(wsrep, &ws_handle,
+                            &wk_updated,
+                            1,    /* single key */
+                            WSREP_KEY_UPDATE,
+                            false /* no need to make a copy */);
+    if (ret) goto cleanup;
+
+    /* REPLICATION: create a writeset for trx: append data */
     ret = wsrep->append_data(wsrep, &ws_handle,
                              &ws, 1, WSREP_DATA_ORDERED, false);
     if (ret) goto cleanup;
@@ -111,13 +124,22 @@ node_trx_apply(node_store_t*            const store,
 
     wsrep_trx_id_t trx_id;
     wsrep_buf_t err_buf = { NULL, 0 };
-    int const app_err = node_store_apply(store, &trx_id, ws);
-    if (app_err)
+    int app_err;
+    if (ws)
     {
-        /* REPLICATION: if applying failed, prepare an error buffer with
-         *              sufficient error specification */
-        err_buf.ptr = &app_err; // suppose error code is enough
-        err_buf.len = sizeof(app_err);
+        app_err = node_store_apply(store, &trx_id, ws);
+        if (app_err)
+        {
+            /* REPLICATION: if applying failed, prepare an error buffer with
+             *              sufficient error specification */
+            err_buf.ptr = &app_err; // suppose error code is enough
+            err_buf.len = sizeof(app_err);
+        }
+    }
+    else /* ws failed certification and should be skipped */
+    {
+        /* just some non-0 code to choose node_store_update_gtid() below */
+        app_err = 1;
     }
 
     wsrep_status_t ret;
