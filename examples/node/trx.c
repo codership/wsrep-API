@@ -24,14 +24,13 @@
 wsrep_status_t
 node_trx_execute(node_store_t* const   store,
                  wsrep_t* const        wsrep,
-                 wsrep_conn_id_t const conn_id,
-                 size_t const          ws_size)
+                 wsrep_conn_id_t const conn_id)
 {
     wsrep_status_t cert = WSREP_FATAL; // for cleanup
 
     /* prepare simple transaction and obtain a writeset handle for it */
     wsrep_ws_handle_t ws_handle = { 0, NULL };
-    if (0 != node_store_execute(store, wsrep, ws_size, &ws_handle))
+    if (0 != node_store_execute(store, wsrep, &ws_handle))
     {
         return WSREP_TRX_FAIL;
     }
@@ -52,7 +51,7 @@ node_trx_execute(node_store_t* const   store,
         node_store_rollback(store, ws_handle.trx_id);
     }
 
-    wsrep_status_t ret;
+    wsrep_status_t ret = WSREP_OK;
     /* REPLICATION: writeset was totally ordered, need to enter commit order */
     if (ws_meta.gtid.seqno > 0)
     {

@@ -76,13 +76,11 @@ node_store_gtid(node_store_t* store, wsrep_gtid_t* gtid);
  * node_store_commit() or node_store_rollback()
  *
  * @param[in]  wsrep     provider handle
- * @param[in]  ws_size   desired size of the write set
  * @param[out] ws_handle reference to the resulting write set in the provider
  */
 extern int
 node_store_execute(node_store_t*      store,
                    wsrep_t*           wsrep,
-                   size_t             ws_size,
                    wsrep_ws_handle_t* ws_handle);
 
 /**

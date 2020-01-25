@@ -36,10 +36,12 @@ struct node_store
     wsrep_trx_id_t  trx_id;
     pthread_mutex_t trx_id_mtx;
     char*           snapshot;
-    uint32_t        members_num;
     member_t*       members;
-    uint32_t        records_num;
     void*           records;
+    size_t          ws_size;
+    uint32_t        members_num;
+    uint32_t        records_num;
+    bool            read_view_support; // read view support by cluster
 };
 
 #define DECLARE_SERIALIZE_INT(INTTYPE)                                  \
@@ -90,6 +92,16 @@ store_record_get(const void*     const base,
     return store_deserialize_uint32(&record->value, position);
 }
 
+/* transaction context */
+struct store_trx_ctx
+{
+    uint32_t to;
+    record_t rec;
+};
+
+#define TRX_CTX_SIZE (sizeof(((struct store_trx_ctx*)NULL)->to) +       \
+                      RECORD_SIZE)
+
 node_store_t*
 node_store_open(const struct node_options* const opts)
 {
@@ -113,6 +125,9 @@ node_store_open(const struct node_options* const opts)
                 struct record const record = { i };
                 store_record_set(ret->records, i, &record);
             }
+
+            ret->ws_size = (size_t)opts->ws_size > TRX_CTX_SIZE ?
+                (size_t)opts->ws_size : TRX_CTX_SIZE;
         }
         else
         {
@@ -176,7 +191,7 @@ store_new_members(const char* ptr, const char* const endptr,
  * deserializes records from snapshot */
 static int
 store_new_records(const char* ptr, const char* const endptr,
-                  uint32_t* const num, record_t** const rec)
+                  uint32_t* const num, void** const rec)
 {
     ptr += store_deserialize_uint32(num, ptr);
 
@@ -195,7 +210,7 @@ store_new_records(const char* ptr, const char* const endptr,
         return -1;
     }
 
-    *rec = calloc(*num, sizeof(record_t));
+    *rec = malloc(rsize);
     if (!*rec)
     {
         NODE_ERROR("Could not allocate new records");
@@ -252,8 +267,11 @@ node_store_init_state(struct node_store*  const store,
     }
     ptr += ret;
 
+    bool const read_view_support = ptr[0];
+    ptr += 1;
+
     uint32_t r_num;
-    record_t* new_records;
+    void* new_records;
     ret = store_new_records(ptr, endptr, &r_num, &new_records);
     if (ret < 0)
     {
@@ -289,6 +307,7 @@ node_store_init_state(struct node_store*  const store,
         store->records_num = r_num;
         store->records     = new_records;
         store->gtid        = state_gtid;
+        store->read_view_support = read_view_support;
         ret = 0;
     }
 
@@ -315,6 +334,7 @@ node_store_acquire_state(node_store_t* const store,
         size_t const rec_len  = store->records_num * RECORD_SIZE;
         size_t const buf_len  = WSREP_GTID_STR_LEN + 1
             + sizeof(uint32_t) + memb_len
+            + 1 /* read view support */
             + sizeof(uint32_t) + rec_len;
 
         store->snapshot = malloc(buf_len);
@@ -343,6 +363,11 @@ node_store_acquire_state(node_store_t* const store,
                 ptr += memb_len;
                 ret += (int)memb_len;
                 assert((size_t)ret + sizeof(uint32_t) <= buf_len);
+
+                /* read view support */
+                ptr[0] = store->read_view_support;
+                ptr += 1;
+                ret += 1;
 
                 /* records */
                 ptr += store_serialize_uint32(ptr, store->records_num);
@@ -461,6 +486,7 @@ node_store_update_membership(struct node_store*       const store,
     store->members     = new_members;
     store->members_num = (uint32_t)v->memb_num;
     store->gtid        = v->state_id;
+    store->read_view_support = (v->capabilities & WSREP_CAP_SNAPSHOT);
 
     pthread_mutex_unlock(&store->gtid_mtx);
 
@@ -486,16 +512,6 @@ node_store_gtid(struct node_store* const store,
 }
 
 
-/* transaction context */
-struct store_trx_ctx
-{
-    uint32_t to;
-    record_t rec;
-};
-
-#define TRX_CTX_SIZE (sizeof(((struct store_trx_ctx*)NULL)->to) +       \
-                      RECORD_SIZE)
-
 static inline void
 store_serialize_trx(void* const buf, const struct store_trx_ctx* const trx)
 {
@@ -515,16 +531,13 @@ store_deserialize_trx(struct store_trx_ctx* const trx, const void* const buf)
 int
 node_store_execute(node_store_t*      const store,
                    wsrep_t*           const wsrep,
-                   size_t             const ws_size,
                    wsrep_ws_handle_t* const ws_handle)
 {
     assert(store);
 
     /* Allocate transaction context object */
     static size_t const ws_offset = sizeof(struct store_trx_ctx);
-    static size_t const min_ws_len = TRX_CTX_SIZE;
-    size_t const ws_len = ws_size > min_ws_len ? ws_size : min_ws_len;
-    char*  const buf    = malloc(ws_offset + ws_len);
+    char* const buf = malloc(ws_offset + store->ws_size);
 
     /* store allocated memory address directly in trx_id to avoid implementing
      * hashtable between trx_id and allocated resource for now.
@@ -538,6 +551,7 @@ node_store_execute(node_store_t*      const store,
 
     struct store_trx_ctx* trx = (struct store_trx_ctx*)buf;
     uint32_t from;
+    wsrep_gtid_t read_view;
 
     int err = pthread_mutex_lock(&store->gtid_mtx);
     if (err)
@@ -545,6 +559,9 @@ node_store_execute(node_store_t*      const store,
         NODE_FATAL("Failed to lock store GTID");
         abort();
     }
+
+    if (store->read_view_support)
+        read_view = store->gtid; /* ID of the read view of the transaction */
 
     /* Transaction: copy value from one random record to another... */
     from = (uint32_t)rand() % store->records_num;
@@ -557,6 +574,16 @@ node_store_execute(node_store_t*      const store,
     trx->rec.value += 1;
 
     wsrep_status_t ret;
+
+    /* REPLICATION: Since this application does not implement record locks,
+     *              it needs to establish read view for each transaction for a
+     *              proper conflict detection and transaction isolation.
+     *              Otherwose we'll need to implement record versioning */
+    if (store->read_view_support)
+    {
+        ret = wsrep->assign_read_view(wsrep, ws_handle, &read_view);
+        if (ret && ret != WSREP_NOT_IMPLEMENTED) goto error;
+    }
 
     /* REPLICATION: append keys touched by the transaction
      *
@@ -593,7 +620,7 @@ node_store_execute(node_store_t*      const store,
      * NOTE: ws storage was dynamically allocated and has the same durability
      *       as the transaction context. Hence provider does not need to make
      *       own copy */
-    wsrep_buf_t ws = { .ptr = buf + ws_offset, .len = ws_len };
+    wsrep_buf_t ws = { .ptr = buf + ws_offset, .len = store->ws_size };
     assert(ws.len >= TRX_CTX_SIZE);
     store_serialize_trx((void*)ws.ptr, trx);
     ret = wsrep->append_data(wsrep, ws_handle,
@@ -685,7 +712,7 @@ store_update_gtid(node_store_t* const store, const wsrep_gtid_t* ws_gtid)
         abort();
     }
 
-    static wsrep_seqno_t const period = 0x1fffff; /* ~2M */
+    static wsrep_seqno_t const period = 0x000fffff; /* ~1M */
     if (0 == (store->gtid.seqno & period))
     {
         store_checksum_state(store);

@@ -48,7 +48,7 @@ typedef enum opt
     OPTS_SLAVES    = 's',
     OPTS_BASE_HOST = 't',
     OPTS_PROVIDER  = 'v',
-    OPTS_REC_SIZE  = 'w'
+    OPTS_WS_SIZE   = 'w'
 }
     opt_t;
 
@@ -68,7 +68,7 @@ static struct option s_opts[] =
     { "slaves",    OPTS_RA, NULL, OPTS_SLAVES    },
     { "base-host", OPTS_RA, NULL, OPTS_BASE_HOST },
     { "provider",  OPTS_RA, NULL, OPTS_PROVIDER  },
-    { "size",      OPTS_RA, NULL, OPTS_REC_SIZE  },
+    { "size",      OPTS_RA, NULL, OPTS_WS_SIZE   },
     { NULL, 0, NULL, 0 }
 };
 
@@ -88,7 +88,7 @@ static const struct node_options opts_defaults =
     .base_host = "localhost",
     .masters   = 0,
     .slaves    = 1,
-    .rec_size  = 1024,
+    .ws_size   = 1024,
     .records   = 1024*1024,
     .delay     = 0,
     .base_port = 4567,
@@ -121,7 +121,8 @@ opts_print_help(FILE* out, const char* prog_name)
         "  -m, --masters=NUM          number of concurrent master workers.\n"
         "  -s, --slaves=NUM           number of concurrent slave workers.\n"
         "                             (can't be less than 1)\n"
-        "  -w, --size=NUM             size of a record in the store. Default: 1K\n"
+        "  -w, --size=NUM             desirable size of the resulting writesets\n"
+        "                             (approximate lower boundary). Default: 1K\n"
         "  -r, --records=NUM          number of records in the store.\n"
         "  -d, --delay=NUM            delay in milliseconds between \"commits\"\n"
         "                             (per master thread).\n"
@@ -147,7 +148,7 @@ opts_print_config(FILE* out, const struct node_options* opts)
         "base addr:     %s:%ld\n"
         "masters:       %ld\n"
         "slaves:        %ld\n"
-        "record size:   %ld bytes\n"
+        "writeset size: %ld bytes\n"
         "records:       %ld\n"
         "commit delay:  %ld ms\n"
         "stats period:  %ld s\n"
@@ -155,7 +156,7 @@ opts_print_config(FILE* out, const struct node_options* opts)
         ,
         opts->provider, opts->address, opts->options, opts->name, opts->data_dir,
         opts->base_host, opts->base_port,
-        opts->masters, opts->slaves, opts->rec_size, opts->records, opts->delay,
+        opts->masters, opts->slaves, opts->ws_size, opts->records, opts->delay,
         opts->period, opts->bootstrap ? "Yes" : "No"
         );
 }
@@ -248,9 +249,9 @@ node_options_read(int argc, char* argv[], struct node_options* opts)
         case OPTS_PROVIDER:
             opts->provider = optarg;
             break;
-        case OPTS_REC_SIZE:
-            opts->rec_size = strtol(optarg, &endptr, 10);
-            if ((ret = opts_check_conversion(opts->rec_size > 0, endptr,
+        case OPTS_WS_SIZE:
+            opts->ws_size = strtol(optarg, &endptr, 10);
+            if ((ret = opts_check_conversion(opts->ws_size > 0, endptr,
                                              opt_idx)))
                 goto err;
             break;
