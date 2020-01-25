@@ -18,7 +18,7 @@
 
 #include "log.h"
 
-#include <arpa/inet.h> // htonl()
+//#include <arpa/inet.h> // htonl()
 #include <assert.h>
 #include <errno.h>
 #include <pthread.h>
@@ -28,7 +28,6 @@
 #include <string.h>   // memset()
 
 typedef wsrep_uuid_t member_t;
-typedef uint32_t     record_t;
 
 struct node_store
 {
@@ -40,8 +39,56 @@ struct node_store
     uint32_t        members_num;
     member_t*       members;
     uint32_t        records_num;
-    record_t*       records;
+    void*           records;
 };
+
+#define DECLARE_SERIALIZE_INT(INTTYPE)                                  \
+    static inline size_t                                                \
+    store_serialize_##INTTYPE(void* const to, INTTYPE##_t const from)   \
+    {                                                                   \
+        memcpy(to, &from, sizeof(from)); /* for simplicity ignore endianness */ \
+        return sizeof(from);                                            \
+    }
+
+DECLARE_SERIALIZE_INT(uint32);
+DECLARE_SERIALIZE_INT(int64);
+
+#define DECLARE_DESERIALIZE_INT(INTTYPE)                                \
+    static inline size_t                                                \
+    store_deserialize_##INTTYPE(INTTYPE##_t* const to, const void* const from) \
+    {                                                                   \
+        memcpy(to, from, sizeof(*to)); /* for simplicity ignore endianness */ \
+        return sizeof(*to);                                             \
+    }
+
+DECLARE_DESERIALIZE_INT(uint32);
+DECLARE_DESERIALIZE_INT(int64);
+
+typedef struct record
+{
+    uint32_t value;
+}
+record_t;
+
+#define RECORD_SIZE sizeof(((record_t*)(NULL))->value)
+
+static inline size_t
+store_record_set(void*           const base,
+                 size_t          const index,
+                 const record_t* const record)
+{
+    char* const position = (char*)base + index*RECORD_SIZE;
+    return store_serialize_uint32(position, record->value);
+}
+
+static inline size_t
+store_record_get(const void*     const base,
+                 size_t          const index,
+                 record_t*       const record)
+{
+    const char* const position = (const char*)base + index*RECORD_SIZE;
+    return store_deserialize_uint32(&record->value, position);
+}
 
 node_store_t*
 node_store_open(const struct node_options* const opts)
@@ -50,7 +97,7 @@ node_store_open(const struct node_options* const opts)
 
     if (ret)
     {
-        ret->records = malloc((size_t)opts->records * sizeof(*ret->records));
+        ret->records = malloc((size_t)opts->records * RECORD_SIZE);
 
         if (ret->records)
         {
@@ -62,7 +109,9 @@ node_store_open(const struct node_options* const opts)
             uint32_t i;
             for (i = 0; i < ret->records_num; i++)
             {
-                ret->records[i] = i;
+                /* keep state in serialized form for easy snapshotting */
+                struct record const record = { i };
+                store_record_set(ret->records, i, &record);
             }
         }
         else
@@ -93,8 +142,7 @@ static int
 store_new_members(const char* ptr, const char* const endptr,
                   uint32_t* const num, member_t** const memb)
 {
-    memcpy(num, ptr, sizeof(*num));
-    *num = ntohl(*num);
+    ptr += store_deserialize_uint32(num, ptr);
 
     if (*num < 2)
     {
@@ -103,7 +151,6 @@ store_new_members(const char* ptr, const char* const endptr,
     }
 
     int ret = (int)sizeof(*num);
-    ptr += ret;
 
     size_t const msize = sizeof(member_t) * *num;
     if ((endptr - ptr) < (ptrdiff_t)msize)
@@ -131,8 +178,7 @@ static int
 store_new_records(const char* ptr, const char* const endptr,
                   uint32_t* const num, record_t** const rec)
 {
-    memcpy(num, ptr, sizeof(*num));
-    *num = ntohl(*num);
+    ptr += store_deserialize_uint32(num, ptr);
 
     int ret = (int)sizeof(*num);
     if (!*num)
@@ -141,8 +187,7 @@ store_new_records(const char* ptr, const char* const endptr,
         return ret;
     }
 
-    ptr += ret;
-    size_t const rsize = sizeof(record_t) * *num;
+    size_t const rsize = RECORD_SIZE * *num;
     if ((endptr - ptr) < (ptrdiff_t)rsize)
     {
         NODE_ERROR("State snapshot does not contain all records: "
@@ -159,14 +204,6 @@ store_new_records(const char* ptr, const char* const endptr,
 
     memcpy(*rec, ptr, rsize);
 
-    uint32_t i;
-    for (i = 0; i < *num; i++)
-    {
-        /* Not doing it derectly from ptr due to potential alignment issues.
-         * Bulk memcpy() above is way more efficient */
-        (*rec)[i] = ntohl((*rec)[i]);
-    }
-
     return ret + (int)rsize;
 }
 
@@ -175,9 +212,9 @@ node_store_init_state(struct node_store*  const store,
                       const void*         const state,
                       size_t              const state_len)
 {
-    /* First, desewrialize and prepare new state */
-    if (state_len <= sizeof(wsrep_uuid_t)*2 /* at least two members */ +
-        WSREP_UUID_STR_LEN + 1 /* : */ + 1 /* \0 */)
+    /* First, deserialize and prepare new state */
+    if (state_len <= sizeof(member_t)*2 /* at least two members */ +
+        WSREP_UUID_STR_LEN + 1 /* : */ + 1 /* seqno */ + 1 /* \0 */)
     {
         NODE_ERROR("State snapshot too short: %zu", state_len);
         return -1;
@@ -198,7 +235,7 @@ node_store_init_state(struct node_store*  const store,
     ret++; /* \0 */
     if ((state_len - (size_t)ret) < sizeof(uint32_t))
     {
-        NODE_ERROR("State snapshot does not contain number of members");
+        NODE_ERROR("State snapshot does not contain the number of members");
         return -1;
     }
 
@@ -272,13 +309,10 @@ node_store_acquire_state(node_store_t* const store,
         abort();
     }
 
-    char*    ptr;
-    uint32_t num;
-
     if (!store->snapshot)
     {
         size_t const memb_len = store->members_num * sizeof(member_t);
-        size_t const rec_len  = store->records_num * sizeof(record_t);
+        size_t const rec_len  = store->records_num * RECORD_SIZE;
         size_t const buf_len  = WSREP_GTID_STR_LEN + 1
             + sizeof(uint32_t) + memb_len
             + sizeof(uint32_t) + rec_len;
@@ -287,7 +321,7 @@ node_store_acquire_state(node_store_t* const store,
 
         if (store->snapshot)
         {
-            ptr = store->snapshot;
+            char* ptr = store->snapshot;
 
             /* state GTID */
             ret = wsrep_gtid_print(&store->gtid, ptr, buf_len);
@@ -302,10 +336,8 @@ node_store_acquire_state(node_store_t* const store,
                 assert((size_t)ret < buf_len);
 
                 /* membership */
-                num = htonl(store->members_num);
-                memcpy(ptr, &num, sizeof(num));
-                ptr += sizeof(num);
-                ret += (int)sizeof(num);
+                ptr += store_serialize_uint32(ptr, store->members_num);
+                ret += (int)sizeof(uint32_t);
                 assert((size_t)ret + memb_len < buf_len);
                 memcpy(ptr, store->members, memb_len);
                 ptr += memb_len;
@@ -313,10 +345,8 @@ node_store_acquire_state(node_store_t* const store,
                 assert((size_t)ret + sizeof(uint32_t) <= buf_len);
 
                 /* records */
-                num = htonl(store->records_num);
-                memcpy(ptr, &num, sizeof(num));
-                ptr += sizeof(num);
-                ret += (int)sizeof(num);
+                ptr += store_serialize_uint32(ptr, store->records_num);
+                ret += (int)sizeof(uint32_t);
                 assert((size_t)ret + rec_len < buf_len);
                 memcpy(ptr, store->records, rec_len);
                 ret += (int)rec_len;
@@ -345,18 +375,7 @@ node_store_acquire_state(node_store_t* const store,
 
     if (ret > 0)
     {
-        uint32_t i;
-        record_t* r = (record_t*)ptr; /* poorly aligned */
-
-        num = ntohl(num); /* back from network order */
-        for (i = 0; i < num; i++)
-        {
-            record_t wa; /* well aligned */
-            memcpy(&wa, &r[i], sizeof(wa));
-            wa = htonl(wa);
-            memcpy(&r[i], &wa, sizeof(wa));
-        }
-        NODE_INFO("\n\nPrepared snapshot of %u records\n\n", num);
+        NODE_INFO("\n\nPrepared snapshot of %u records\n\n", store->records_num);
         *state     = store->snapshot;
         *state_len = (size_t)ret;
         ret        = 0;
@@ -471,95 +490,120 @@ node_store_gtid(struct node_store* const store,
 struct store_trx_ctx
 {
     uint32_t to;
-    record_t val;
+    record_t rec;
 };
 
-union store_trx_ctx_aligned { struct store_trx_ctx a; wsrep_buf_t b; };
+#define TRX_CTX_SIZE (sizeof(((struct store_trx_ctx*)NULL)->to) +       \
+                      RECORD_SIZE)
+
+static inline void
+store_serialize_trx(void* const buf, const struct store_trx_ctx* const trx)
+{
+    char* ptr = buf;
+    ptr += store_serialize_uint32(ptr, trx->to);
+    store_record_set(ptr, 0, &trx->rec);
+}
+
+static inline void
+store_deserialize_trx(struct store_trx_ctx* const trx, const void* const buf)
+{
+    const char* ptr = buf;
+    ptr += store_deserialize_uint32(&trx->to, ptr);
+    store_record_get(ptr, 0, &trx->rec);
+}
 
 int
-node_store_execute(node_store_t*   const store,
-                   wsrep_trx_id_t* const trx_id,
-                   wsrep_key_t*    const key,
-                   wsrep_buf_t*    const ws)
+node_store_execute(node_store_t*      const store,
+                   wsrep_t*           const wsrep,
+                   size_t             const ws_size,
+                   wsrep_ws_handle_t* const ws_handle)
 {
     assert(store);
 
-    uint32_t to, from;
-    record_t val;
-    int ret = pthread_mutex_lock(&store->gtid_mtx);
-    if (ret)
-    {
-        NODE_FATAL("Failed to lock store GTID");
-        abort();
-    }
-
-    /* Transaction: copy value from one random record to another
-     * and increment it by 1 */
-    to   = (uint32_t)rand() % store->records_num;
-    from = (uint32_t)rand() % store->records_num;
-    val  = store->records[from] + 1;
-
-    pthread_mutex_unlock(&store->gtid_mtx);
-
-    static size_t const key_parts_offset = sizeof(union store_trx_ctx_aligned);
-    size_t const key_vals_offset = key_parts_offset +
-        2 * sizeof(wsrep_buf_t); /* array of 2 key part structs */
-    size_t const ws_offset = key_vals_offset + 2 * sizeof(to); /* 2 key values */
-    size_t const ws_len = ws->len > sizeof(to) + sizeof(val) ?
-        ws->len : sizeof(to) + sizeof(val);
-    size_t const alloc_size = ws_offset + ws_len;
-    char*  const buf = malloc(alloc_size);
+    /* Allocate transaction context object */
+    static size_t const ws_offset = sizeof(struct store_trx_ctx);
+    static size_t const min_ws_len = TRX_CTX_SIZE;
+    size_t const ws_len = ws_size > min_ws_len ? ws_size : min_ws_len;
+    char*  const buf    = malloc(ws_offset + ws_len);
 
     /* store allocated memory address directly in trx_id to avoid implementing
      * hashtable between trx_id and allocated resource for now.
      * Thus we can free it right away in commit/rollback */
-    assert(sizeof(*trx_id) >= sizeof(buf));
-    *trx_id = (uintptr_t)buf;
+    assert(sizeof(ws_handle->trx_id) >= sizeof(buf));
+    ws_handle->trx_id = (uintptr_t)buf;
     if (!buf)
     {
         return -ENOMEM;
     }
 
-    /* record "prepared" transaction in transaction context for use in commit */
     struct store_trx_ctx* trx = (struct store_trx_ctx*)buf;
-    trx->to  = to;
-    trx->val = val;
+    uint32_t from;
 
-    to   = htonl(to);
-    from = htonl(from);
-    val  = htonl(val);
+    int err = pthread_mutex_lock(&store->gtid_mtx);
+    if (err)
+    {
+        NODE_FATAL("Failed to lock store GTID");
+        abort();
+    }
 
-    /* REPLICATION: creating key parts */
-    wsrep_buf_t* key_parts = (wsrep_buf_t*)(buf + key_parts_offset);
-    uint32_t*    key_vals  = (uint32_t*)   (buf + key_vals_offset);
+    /* Transaction: copy value from one random record to another... */
+    from = (uint32_t)rand() % store->records_num;
+    store_record_get(store->records, from, &trx->rec);
+    trx->to = (uint32_t)rand() % store->records_num;
 
-    memcpy(&key_vals[0], &from, sizeof(from));
-    key_parts[0].ptr = &key_vals[0];
-    key_parts[0].len = sizeof(from);
+    pthread_mutex_unlock(&store->gtid_mtx);
 
-    memcpy(&key_vals[1], &to, sizeof(to));
-    key_parts[1].ptr = &key_vals[1];
-    key_parts[1].len = sizeof(to);
+    /* ... and modify it somehow, e.g. increment by 1 */
+    trx->rec.value += 1;
 
-    /* REPLICATION: recording key parts in a key struct
+    wsrep_status_t ret;
+
+    /* REPLICATION: append keys touched by the transaction
+     *
      * NOTE: depending on data access granularity some applications may require
      *       multipart keys, e.g. <schema>:<table>:<row> in a SQL database.
      *       Single part keys match hashtables and key-value stores.
-     *       Here we have two key parts representing two different single-part
-     *       keys which reference two different records. For convenience however
-     *       we'll return them as two parts in a single wsrep_key struct which
-     *       here serves only as a container. */
-    key->key_parts     = key_parts;
-    key->key_parts_num = 2;
+     *       Below we have two different single-part keys which reference two
+     *       different records. */
+    uint32_t    key_val;
+    wsrep_buf_t key_part = { .ptr = &key_val, .len = sizeof(key_val) };
+    wsrep_key_t ws_key = { .key_parts = &key_part, .key_parts_num = 1 };
 
-    /* REPLICATION: filling the actual writeset */
-    char* const ws_ptr = buf + ws_offset;
-    memcpy(ws_ptr, &to, sizeof(to));
-    memcpy(ws_ptr + sizeof(to), &val, sizeof(val));
-    ws->ptr = ws_ptr;
-    ws->len = ws_len;
+    /* REPLICATION: Key 1 - the key of the source, unchanged record */
+    store_serialize_uint32(&key_val, from);
+    ret = wsrep->append_key(wsrep, ws_handle,
+                            &ws_key,
+                            1,   /* single key */
+                            WSREP_KEY_REFERENCE,
+                            true /* provider shall make a copy of the key */);
+    if (ret) goto error;
 
-    return 0;
+    /* REPLICATION: Key 2 - the key of the record we want to update */
+    store_serialize_uint32(&key_val, trx->to);
+    ret = wsrep->append_key(wsrep, ws_handle,
+                            &ws_key,
+                            1,   /* single key */
+                            WSREP_KEY_UPDATE,
+                            true /* provider shall make a copy of the key */);
+    if (ret) goto error;
+
+    /* REPLICATION: append the actual transaction "writeset", which is
+     *              essentially serialized transation context
+     *
+     * NOTE: ws storage was dynamically allocated and has the same durability
+     *       as the transaction context. Hence provider does not need to make
+     *       own copy */
+    wsrep_buf_t ws = { .ptr = buf + ws_offset, .len = ws_len };
+    assert(ws.len >= TRX_CTX_SIZE);
+    store_serialize_trx((void*)ws.ptr, trx);
+    ret = wsrep->append_data(wsrep, ws_handle,
+                             &ws, 1, WSREP_DATA_ORDERED,
+                             false /* no need to make a copy */);
+    if (!ret) return 0;
+
+error:
+    free(buf);
+    return ret;
 }
 
 int
@@ -577,18 +621,9 @@ node_store_apply(node_store_t*      const store,
         return -ENOMEM;
     }
 
-    /* prepare values for commit */
-    uint32_t to;
-    record_t val;
-
-    assert(ws->len >= sizeof(to) + sizeof(val));
-
-    memcpy(&to, ws->ptr, sizeof(to));
-    memcpy(&val, (char*)ws->ptr + sizeof(to), sizeof(val));
-
-    trx->to  = ntohl(to);
-    trx->val = ntohl(val);
-
+    /* prepare trx context for commit */
+    assert(ws->len >= TRX_CTX_SIZE);
+    store_deserialize_trx(trx, ws->ptr);
     assert(trx->to <= store->records_num);
 
     return 0;
@@ -624,21 +659,13 @@ store_checksum_state(node_store_t* store)
         res = store_fnv32a(&store->members[i], sizeof(*store->members), res);
     }
 
-    for (i = 0; i < store->records_num; i++)
-    {
-        uint32_t val = htonl(store->records[i]);
-        res = store_fnv32a(&val, sizeof(val), res);
-    }
+    res = store_fnv32a(store->records, store->records_num * RECORD_SIZE, res);
 
     res = store_fnv32a(&store->gtid.uuid, sizeof(store->gtid.uuid), res);
 
-    wsrep_seqno_t s = store->gtid.seqno;
-    for (i = 0; i < sizeof(s); i++)
-    {
-        char a = (char)(s & 0xff);
-        res = store_fnv32a(&a, sizeof(a), res);
-        s >>= 8;
-    }
+    wsrep_seqno_t s;
+    store_serialize_int64(&s, store->gtid.seqno);
+    res = store_fnv32a(&s, sizeof(s), res);
 
     NODE_INFO("\n\n\tSeqno: %lld; state hash: %#010x\n",
               (long long)store->gtid.seqno, res);
@@ -685,7 +712,7 @@ node_store_commit(node_store_t*       const store,
 
     store_update_gtid(store, ws_gtid);
 
-    store->records[trx->to] = trx->val;
+    store_record_set(store->records, trx->to, &trx->rec);
 
     pthread_mutex_unlock(&store->gtid_mtx);
 
