@@ -33,7 +33,7 @@ struct node_options
     const char* base_host;// host own address
     long        masters;  // number of master threads
     long        slaves;   // number of slave threads
-    long        rec_size; // record size
+    long        ws_size;  // desired writeset size
     long        records;  // total number of records
     long        delay;    // delay between commits
     long        base_port;// base port to use
