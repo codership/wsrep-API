@@ -24,46 +24,19 @@
 wsrep_status_t
 node_trx_execute(node_store_t* const   store,
                  wsrep_t* const        wsrep,
-                 wsrep_conn_id_t const conn_id,
-                 size_t const          ws_size)
+                 wsrep_conn_id_t const conn_id)
 {
-    wsrep_trx_id_t trx_id;
-    wsrep_key_t    ws_key;
-    wsrep_buf_t    ws = { NULL, ws_size };
-
-    /* prepare simple transaction and return the key and data buffer */
-    node_store_execute(store, &trx_id, &ws_key, &ws);
     wsrep_status_t cert = WSREP_FATAL; // for cleanup
 
-    /* REPLICATION: get wsrep handle for transaction */
-    wsrep_ws_handle_t ws_handle = { trx_id, NULL };
+    /* prepare simple transaction and obtain a writeset handle for it */
+    wsrep_ws_handle_t ws_handle = { 0, NULL };
+    if (0 != node_store_execute(store, wsrep, &ws_handle))
+    {
+        return WSREP_TRX_FAIL;
+    }
 
-    /* REPLICATION: create a writeset for trx: append keys */
-    wsrep_status_t ret;
-    wsrep_key_t wk_referenced =  /* this key references unchanged record */
-        { .key_parts = &ws_key.key_parts[0], .key_parts_num = 1 };
-    ret = wsrep->append_key(wsrep, &ws_handle,
-                            &wk_referenced,
-                            1,    /* single key */
-                            WSREP_KEY_REFERENCE,
-                            false /* no need to make a copy */);
-    if (ret) goto cleanup;
-
-    wsrep_key_t wk_updated =  /* this key references updated record */
-        { .key_parts = &ws_key.key_parts[1], .key_parts_num = 1 };
-    ret = wsrep->append_key(wsrep, &ws_handle,
-                            &wk_updated,
-                            1,    /* single key */
-                            WSREP_KEY_UPDATE,
-                            false /* no need to make a copy */);
-    if (ret) goto cleanup;
-
-    /* REPLICATION: create a writeset for trx: append data */
-    ret = wsrep->append_data(wsrep, &ws_handle,
-                             &ws, 1, WSREP_DATA_ORDERED, false);
-    if (ret) goto cleanup;
-
-    /* REPLICATION: (replicate and) certify the writeset with the cluster */
+    /* REPLICATION: (replicate and) certify the writeset (pointed to by
+     *              ws_handle) with the cluster */
     static unsigned int const ws_flags =
         WSREP_FLAG_TRX_START | WSREP_FLAG_TRX_END; // atomic trx
     wsrep_trx_meta_t ws_meta;
@@ -75,9 +48,10 @@ node_trx_execute(node_store_t* const   store,
          *             conflict. It must rollback immediately: it blocks
          *             transaction that was ordered earlier and will never
          *             be able to enter commit order. */
-        node_store_rollback(store, trx_id);
+        node_store_rollback(store, ws_handle.trx_id);
     }
 
+    wsrep_status_t ret = WSREP_OK;
     /* REPLICATION: writeset was totally ordered, need to enter commit order */
     if (ws_meta.gtid.seqno > 0)
     {
@@ -86,8 +60,10 @@ node_trx_execute(node_store_t* const   store,
 
         /* REPLICATION: inside commit monitor
          * Note: we commit transaction only if certification succeded */
-        if (WSREP_OK == cert) node_store_commit(store, trx_id, &ws_meta.gtid);
-        else                  node_store_update_gtid(store, &ws_meta.gtid);
+        if (WSREP_OK == cert)
+            node_store_commit(store, ws_handle.trx_id, &ws_meta.gtid);
+        else
+            node_store_update_gtid(store, &ws_meta.gtid);
 
         ret = wsrep->commit_order_leave(wsrep, &ws_handle, &ws_meta, NULL);
         if (ret) goto cleanup;
@@ -100,7 +76,8 @@ node_trx_execute(node_store_t* const   store,
 cleanup:
     /* REPLICATION: if wsrep->certify() returned anything else but WSREP_OK
      *              transaction must roll back. BF aborted trx already did it. */
-    if (cert && WSREP_BF_ABORT != cert) node_store_rollback(store, trx_id);
+    if (cert && WSREP_BF_ABORT != cert)
+        node_store_rollback(store, ws_handle.trx_id);
 
     /* NOTE: this application follows the approach that resources must be freed
      *       at the same level where they were allocated, so it is assumed that

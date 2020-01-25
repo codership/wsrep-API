@@ -83,7 +83,7 @@ worker_master(void* send_ctx)
     struct node_ctx*    const node   = worker->node;
     wsrep_t*            const wsrep  = node_wsrep_provider(node->wsrep);
 
-    assert(node->opts->rec_size > 0);
+    assert(node->opts->ws_size > 0);
 
     wsrep_status_t ret;
 
@@ -104,8 +104,7 @@ worker_master(void* send_ctx)
         {
             ret = node_trx_execute(node->store,
                                    wsrep,
-                                   worker->id,
-                                   (size_t)node->opts->rec_size);
+                                   worker->id);
         }
         while(   WSREP_OK       == ret // success
               || WSREP_TRX_FAIL == ret // certification failed, trx rolled back

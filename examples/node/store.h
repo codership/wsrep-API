@@ -75,16 +75,13 @@ node_store_gtid(node_store_t* store, wsrep_gtid_t* gtid);
  * This operation allocates resources that must be freed with either
  * node_store_commit() or node_store_rollback()
  *
- * @param[out] trx_id locally unique transaction ID
- * @param[out] key    key that uniquely identifies modified resource (record)
- * @param[out] ws     write set that countains description of the transaction
- *                    changes sufficient for applying on the slave
+ * @param[in]  wsrep     provider handle
+ * @param[out] ws_handle reference to the resulting write set in the provider
  */
 extern int
-node_store_execute(node_store_t*   store,
-                   wsrep_trx_id_t* trx_id,
-                   wsrep_key_t*    key,
-                   wsrep_buf_t*    ws);
+node_store_execute(node_store_t*      store,
+                   wsrep_t*           wsrep,
+                   wsrep_ws_handle_t* ws_handle);
 
 /**
  * apply and prepare foreign write set received from replication
