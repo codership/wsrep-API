@@ -26,8 +26,8 @@
 
 struct node_ctx
 {
-    struct node_wsrep*         wsrep;
-    struct node_store*         store;
+    node_wsrep_t*              wsrep;
+    node_store_t*              store;
     const struct node_options* opts;
 };
 
