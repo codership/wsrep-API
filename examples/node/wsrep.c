@@ -171,7 +171,7 @@ wsrep_log_view(const struct wsrep_view* v)
 
         space_left = sizeof(caps) - (size_t)written;
     }
-    caps[written - 1] = '\0'; // overwrite last '|'
+    caps[written ? written - 1 : 0] = '\0'; // overwrite last '|'
 
     char members_list[1024];
     written = 0;
@@ -190,18 +190,18 @@ wsrep_log_view(const struct wsrep_view* v)
 
         space_left = sizeof(members_list) - (size_t)written;
     }
-    members_list[written - 1] = '\0'; // overwrite the last '\n'
+    members_list[written ? written - 1 : 0] = '\0'; // overwrite the last '\n'
 
     NODE_INFO(
         "New view received:\n"
         "state: %s (%s)\n"
         "capabilities: %s\n"
         "protocol version: %d\n"
-        "members(%d):\n%s",
+        "members(%d)%s%s",
         gtid, wsrep_view_status_str[v->status],
         caps,
         v->proto_ver,
-        v->memb_num, members_list);
+        v->memb_num, v->memb_num ? ":\n" : "", members_list);
 }
 
 /**
@@ -390,14 +390,14 @@ node_wsrep_open(const struct node_options* const opts,
 }
 
 void
-node_wsrep_close(struct node_wsrep* const wsrep)
+node_wsrep_disconnect(struct node_wsrep* const wsrep)
 {
     if (pthread_mutex_lock(&wsrep->synced.mtx))
     {
         NODE_FATAL("Failed to lock SYNCED mutex");
         abort();
     }
-    wsrep->synced.value = -1;
+    wsrep->synced.value = -1; /* this will signal master threads to exit */
     pthread_cond_broadcast(&wsrep->synced.cond);
     pthread_mutex_unlock(&wsrep->synced.mtx);
 
@@ -410,7 +410,11 @@ node_wsrep_close(struct node_wsrep* const wsrep)
         NODE_FATAL("Failed to close wsrep connection: %d", err);
         abort();
     }
+}
 
+void
+node_wsrep_close(struct node_wsrep* const wsrep)
+{
     if (pthread_mutex_lock(&wsrep->view.mtx))
     {
         NODE_FATAL("Failed to lock VIEW mutex");
