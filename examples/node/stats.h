@@ -21,15 +21,15 @@
 #ifndef NODE_STATS_H
 #define NODE_STATS_H
 
-#include "../../wsrep_api.h"
+#include "ctx.h"
 
 /**
  * Prints out statistics with a given period.
  *
- * @param[in] wsrep  provider
+ * @param[in] node   node context
  * @param[in] period in seconds
  */
 extern void
-node_stats_loop(wsrep_t* wsrep, int period);
+node_stats_loop(const struct node_ctx* node, int period);
 
 #endif /* NODE_STATS_H */

@@ -1,4 +1,4 @@
-/* Copyright (c) 2019, Codership Oy. All rights reserved.
+/* Copyright (c) 2019-2020, Codership Oy. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -39,6 +39,7 @@ struct node_store
     member_t*       members;
     void*           records;
     size_t          ws_size;
+    long            read_view_fails;
     uint32_t        members_num;
     uint32_t        records_num;
     bool            read_view_support; // read view support by cluster
@@ -107,7 +108,8 @@ store_record_equal(const record_t* const lhs, const record_t* const rhs)
 struct store_trx_ctx
 {
     /* Normally what we'd need for transaction context is the record index and
-     * new record value. Here we also save pre-image (rec_from & rec_to) to
+     * new record value. Here we also save read view snapshot (rec_from & rec_to)
+     * to
      * 1. test provider certification correctness if provider supports read view
      * 2. if not, detect conflicts at a store level. */
     record_t rec_from;
@@ -758,7 +760,7 @@ node_store_commit(node_store_t*       const store,
     record_t const new_record =
         { .version = ws_gtid->seqno, .value = trx->new_value };
 
-    bool const check_read_view =
+    bool const check_read_view_snapshot =
 #ifdef NDEBUG
         !store->read_view_support;
 #else
@@ -775,7 +777,7 @@ node_store_commit(node_store_t*       const store,
 
     store_update_gtid(store, ws_gtid);
 
-    if (check_read_view)
+    if (check_read_view_snapshot)
     {
         record_t from, to;
         store_record_get(store->records, trx->idx_from, &from);
@@ -795,6 +797,8 @@ node_store_commit(node_store_t*       const store,
             if (trx->rec_to.version == to.version)
                 assert(trx->rec_to.value == to.value);
             assert(!store->read_view_support);
+
+            store->read_view_fails++;
 
             goto error;
         }
@@ -836,4 +840,24 @@ node_store_update_gtid(node_store_t*       store,
     store_update_gtid(store, ws_gtid);
 
     pthread_mutex_unlock(&store->gtid_mtx);
+}
+
+long
+node_store_read_view_failures(node_store_t* store)
+{
+    assert(store);
+
+    long ret;
+    ret = pthread_mutex_lock(&store->gtid_mtx);
+    if (ret)
+    {
+        NODE_FATAL("Failed to lock store GTID");
+        abort();
+    }
+
+    ret = store->read_view_fails;;
+
+    pthread_mutex_unlock(&store->gtid_mtx);
+
+    return ret;
 }
