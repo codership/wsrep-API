@@ -28,7 +28,7 @@
 #include <pthread.h>
 #include <stdbool.h>
 
-struct node_wsrep;
+typedef struct node_wsrep node_wsrep_t;
 
 /**
  * loads and initializes wsrep provider for further usage
@@ -37,7 +37,7 @@ struct node_wsrep;
  * @param[in] current_gtid GTID corresponding to the current node state
  * @param[in] app_ctx      application context to be passed to callbacks
  */
-extern struct node_wsrep*
+extern node_wsrep_t*
 node_wsrep_open(const struct node_options* opts,
                 const wsrep_gtid_t*        current_gtid,
                 void*                      app_ctx);
@@ -46,7 +46,7 @@ node_wsrep_open(const struct node_options* opts,
  * deinitializes and unloads wsrep provider
  */
 extern void
-node_wsrep_close(struct node_wsrep* wsrep);
+node_wsrep_close(node_wsrep_t* wsrep);
 
 /**
  * waits for the node to become SYNCED
@@ -54,17 +54,17 @@ node_wsrep_close(struct node_wsrep* wsrep);
  * @return true if node is synced, false in any other event.
  */
 extern bool
-node_wsrep_wait_synced(struct node_wsrep* wsrep);
+node_wsrep_wait_synced(node_wsrep_t* wsrep);
 
 /**
  * @param[in]  wsrep context
  * @param[out] gtid of the current view */
 extern void
-node_wsrep_connected_gtid(struct node_wsrep* wsrep, wsrep_gtid_t* gtid);
+node_wsrep_connected_gtid(node_wsrep_t* wsrep, wsrep_gtid_t* gtid);
 
 /**
  * @return wsrep provider instance */
 extern wsrep_t*
-node_wsrep_provider(struct node_wsrep* wsrep);
+node_wsrep_provider(node_wsrep_t* wsrep);
 
 #endif /* NODE_WSREP_H */

@@ -1,4 +1,4 @@
-/* Copyright (c) 2019, Codership Oy. All rights reserved.
+/* Copyright (c) 2019-2020, Codership Oy. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -115,5 +115,11 @@ node_store_rollback(node_store_t*  store,
 extern void
 node_store_update_gtid(node_store_t*       store,
                        const wsrep_gtid_t* ws_gtid);
+
+/**
+ * @return the number of store read view snapshot check failures at commit time.
+ *         (should be zero if provider implements assign_read_view() call) */
+extern long
+node_store_read_view_failures(node_store_t* store);
 
 #endif /* NODE_STORE_H */

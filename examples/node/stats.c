@@ -33,6 +33,7 @@ enum
     STATS_TOTAL_BYTE,
     STATS_TOTAL_WS,
     STATS_CERT_FAILS,
+    STATS_STORE_FAILS,
     STATS_FC_PAUSED,
     STATS_MAX
 };
@@ -46,20 +47,22 @@ static const char* const stats_legend[STATS_MAX] =
     "total(B/s)",
     "total(W/s)",
     " cert.fail",
+    " stor.fail",
     " paused(%)"
 };
 
 /* stats IDs in provider output - provider dependent, here we use Galera's */
 static const char* const galera_ids[STATS_MAX] =
 {
-    "replicated_bytes",       /**<  _STATS_REPL_BYTE  */
-    "replicated",             /**<  _STATS_REPL_WS    */
-    "received_bytes",         /**<  _STATS_RECV_BYTE  */
-    "received",               /**<  _STATS_RECV_WS    */
-    "",                       /**<  _STATS_TOTAL_BYTE */
-    "",                       /**<  _STATS_TOTAL_WS   */
-    "local_cert_failures",    /**<  _STATS_CERT_FAILS */
-    "flow_control_paused_ns"  /**<  _STATS_FC_PAUSED  */
+    "replicated_bytes",       /**<  STATS_REPL_BYTE  */
+    "replicated",             /**<  STATS_REPL_WS    */
+    "received_bytes",         /**<  STATS_RECV_BYTE  */
+    "received",               /**<  STATS_RECV_WS    */
+    "",                       /**<  STATS_TOTAL_BYTE */
+    "",                       /**<  STATS_TOTAL_WS   */
+    "local_cert_failures",    /**<  STATS_CERT_FAILS */
+    "",                       /**<  STATS_STORE_FAILS */
+    "flow_control_paused_ns"  /**<  STATS_FC_PAUSED  */
 };
 
 /* maps local stats IDs to provider stat IDs */
@@ -79,7 +82,10 @@ stats_establish_mapping(wsrep_t* const wsrep)
 
     struct wsrep_stats_var* const ret = wsrep->stats_get(wsrep);
 
-    int mapped = 2; /* to compensate for _STATS_TOTAL_* having no counterparts */
+    /* to compensate for STATS_TOTAL_* and STATS_STORE_FAILS having no
+     * counterparts */
+    int mapped = 3;
+
     i = 0;
     while (ret[i].name)
     {
@@ -101,8 +107,10 @@ stats_establish_mapping(wsrep_t* const wsrep)
 }
 
 static void
-stats_get(wsrep_t* const wsrep, long long stats[])
+stats_get(node_store_t* const store, wsrep_t* const wsrep, long long stats[])
 {
+    stats[STATS_STORE_FAILS] = node_store_read_view_failures(store);
+
     struct wsrep_stats_var* const ret = wsrep->stats_get(wsrep);
     if (!ret)
     {
@@ -167,26 +175,27 @@ stats_print(long long bef[], long long aft[], double period)
 }
 
 void
-node_stats_loop(wsrep_t* const wsrep, int const period)
+node_stats_loop(const struct node_ctx* const node, int const period)
 {
     double     const period_sec  = period;
     useconds_t const period_usec = (useconds_t)period * 1000000;
 
+    wsrep_t* const wsrep = node_wsrep_provider(node->wsrep);
     stats_establish_mapping(wsrep);
 
     long long stats1[STATS_MAX];
     long long stats2[STATS_MAX];
 
-    stats_get(wsrep, stats1);
+    stats_get(node->store, wsrep, stats1);
 
     while (1)
     {
         usleep(period_usec);
-        stats_get(wsrep, stats2);
+        stats_get(node->store, wsrep, stats2);
         stats_print(stats1, stats2, period_sec);
 
         usleep(period_usec);
-        stats_get(wsrep, stats1);
+        stats_get(node->store, wsrep, stats1);
         stats_print(stats2, stats1, period_sec);
     }
 }

@@ -86,7 +86,7 @@ int main(int argc, char* argv[])
         return 1;
     }
 
-    node_stats_loop(node_wsrep_provider(node.wsrep), (int)opts.period);
+    node_stats_loop(&node, (int)opts.period);
 
     /* REPLICATON: to shut down we go in the opposite order:
      *             first  - shutdown master threads,
