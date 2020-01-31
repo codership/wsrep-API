@@ -43,6 +43,12 @@ node_wsrep_open(const struct node_options* opts,
                 void*                      app_ctx);
 
 /**
+ * disconnects from primary component
+ */
+extern void
+node_wsrep_disconnect(node_wsrep_t* wsrep);
+
+/**
  * deinitializes and unloads wsrep provider
  */
 extern void

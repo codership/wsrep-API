@@ -21,10 +21,40 @@
 #include "worker.h"
 #include "wsrep.h"
 
+#include <errno.h>
+#include <signal.h> // sigaction()
 #include <string.h> // strerror()
+
+static void
+signal_handler(int const signum)
+{
+    NODE_INFO("Got signal %d. Terminating.", signum);
+}
+
+static void
+install_signal_handler(void)
+{
+    sigset_t sa_mask;
+    sigemptyset(&sa_mask);
+
+    struct sigaction const act =
+    {
+        .sa_handler = signal_handler,
+        .sa_mask    = sa_mask,
+        .sa_flags   = (int)SA_RESETHAND
+    };
+
+    if (sigaction(SIGINT /* Ctrl-C */, &act, NULL))
+    {
+        NODE_INFO("sigaction() failed: %d (%s)", errno, strerror(errno));
+        abort();
+    }
+}
 
 int main(int argc, char* argv[])
 {
+    install_signal_handler();
+
     struct node_options opts;
     int err = node_options_read(argc, argv, &opts);
     if (err)
@@ -89,14 +119,16 @@ int main(int argc, char* argv[])
     node_stats_loop(&node, (int)opts.period);
 
     /* REPLICATON: to shut down we go in the opposite order:
-     *             first  - shutdown master threads,
-     *             second - close provider,
-     *             and then wait for slave threads to join */
+     *             first  - disconnect from the cluster to signal master threads
+     *                      to exit loop,
+     *             second - join master and slave threads,
+     *             third  - close provider once not in use */
+    node_wsrep_disconnect(node.wsrep);
+
     node_worker_stop(master_pool);
+    node_worker_stop(slave_pool);
 
     node_wsrep_close(node.wsrep);
-
-    node_worker_stop(slave_pool);
 
     /* and finally, when the storage can no longer be disturbed, close it */
     node_store_close(node.store);

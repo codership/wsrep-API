@@ -19,6 +19,7 @@
 #include "log.h"
 
 #include <assert.h>
+#include <errno.h>
 #include <stdio.h>  // snprintf()
 #include <stdlib.h> // abort()
 #include <string.h> // strcmp()
@@ -190,12 +191,22 @@ node_stats_loop(const struct node_ctx* const node, int const period)
 
     while (1)
     {
-        usleep(period_usec);
+        if (usleep(period_usec)) break;
         stats_get(node->store, wsrep, stats2);
         stats_print(stats1, stats2, period_sec);
 
-        usleep(period_usec);
+        if (usleep(period_usec)) break;
         stats_get(node->store, wsrep, stats1);
         stats_print(stats2, stats1, period_sec);
+    }
+
+    if (EINTR != errno)
+    {
+        NODE_ERROR("Unexpected usleep(%lld) error: %d (%s)",
+                   (long long)period_usec, errno, strerror(errno));
+    }
+    else
+    {
+        /* interrupted by signal */
     }
 }
