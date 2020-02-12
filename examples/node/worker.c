@@ -51,8 +51,7 @@ node_worker_apply_cb(void*                    const recv_ctx,
         node_wsrep_provider(worker->node->wsrep),
         ws_handle,
         ws_meta,
-        ws_flags & WSREP_FLAG_ROLLBACK ? NULL : ws
-        );
+        ws_flags & WSREP_FLAG_ROLLBACK ? NULL : ws);
 
     *exit_loop = worker->exit;
 
@@ -104,11 +103,12 @@ worker_master(void* send_ctx)
         {
             ret = node_trx_execute(node->store,
                                    wsrep,
-                                   worker->id);
+                                   worker->id,
+                                   (int)node->opts->operations);
         }
-        while(   WSREP_OK       == ret // success
-              || WSREP_TRX_FAIL == ret // certification failed, trx rolled back
-                                       // retry/continue
+        while(WSREP_OK           == ret // success
+              || (WSREP_TRX_FAIL == ret // certification failed, trx rolled back
+                  && (usleep(10000),true)) // retry after short sleep
             );
     }
     while (WSREP_CONN_FAIL == ret); // provider in bad state (e.g. non-Primary)
@@ -188,7 +188,7 @@ void
 node_worker_stop(struct node_worker_pool* pool)
 {
     size_t i;
-    for (i = 0; i < pool->size; i++)
+    for (i = 0; pool && i < pool->size; i++)
     {
         pthread_join(pool->worker[i].thread_id, NULL);
     }

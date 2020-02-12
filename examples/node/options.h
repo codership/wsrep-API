@@ -38,6 +38,7 @@ struct node_options
     long        delay;    // delay between commits
     long        base_port;// base port to use
     long        period;   // statistics output interval
+    long        operations;// number of "statements" in a "transaction"
     bool        bootstrap;// bootstrap the cluster with this node
 };
 
