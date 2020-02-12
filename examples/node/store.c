@@ -18,10 +18,10 @@
 
 #include "log.h"
 
-//#include <arpa/inet.h> // htonl()
 #include <assert.h>
 #include <errno.h>
 #include <pthread.h>
+#include <stdbool.h>
 #include <stddef.h>   // ptrdiff_t
 #include <stdint.h>   // uintptr_t
 #include <stdlib.h>   // abort()
@@ -75,7 +75,7 @@ typedef struct record
 }
 record_t;
 
-#define RECORD_SIZE \
+#define STORE_RECORD_SIZE \
     (sizeof(((record_t*)(NULL))->version) + sizeof(((record_t*)(NULL))->value))
 
 static inline size_t
@@ -83,9 +83,9 @@ store_record_set(void*           const base,
                  size_t          const index,
                  const record_t* const record)
 {
-    char* const position = (char*)base + index*RECORD_SIZE;
-    memcpy(position, record, RECORD_SIZE);
-    return RECORD_SIZE;
+    char* const position = (char*)base + index*STORE_RECORD_SIZE;
+    memcpy(position, record, STORE_RECORD_SIZE);
+    return STORE_RECORD_SIZE;
 }
 
 static inline size_t
@@ -93,9 +93,9 @@ store_record_get(const void*     const base,
                  size_t          const index,
                  record_t*       const record)
 {
-    const char* const position = (const char*)base + index*RECORD_SIZE;
-    memcpy(record, position, RECORD_SIZE);
-    return RECORD_SIZE;
+    const char* const position = (const char*)base + index*STORE_RECORD_SIZE;
+    memcpy(record, position, STORE_RECORD_SIZE);
+    return STORE_RECORD_SIZE;
 }
 
 static inline bool
@@ -105,7 +105,7 @@ store_record_equal(const record_t* const lhs, const record_t* const rhs)
 }
 
 /* transaction context */
-struct store_trx_ctx
+struct store_trx_op
 {
     /* Normally what we'd need for transaction context is the record index and
      * new record value. Here we also save read view snapshot (rec_from & rec_to)
@@ -117,12 +117,50 @@ struct store_trx_ctx
     uint32_t idx_from;
     uint32_t idx_to;
     uint32_t new_value;
+    uint32_t size; /* nominal "size" of operation to manipulate on-the-wire
+                    * writeset size. */
 };
 
-#define TRX_CTX_SIZE (RECORD_SIZE + RECORD_SIZE +                       \
-                      sizeof(((struct store_trx_ctx*)NULL)->idx_from) + \
-                      sizeof(((struct store_trx_ctx*)NULL)->idx_to) +   \
-                      sizeof(((struct store_trx_ctx*)NULL)->new_value))
+#define STORE_OP_SIZE (STORE_RECORD_SIZE + STORE_RECORD_SIZE +           \
+                       sizeof(((struct store_trx_op*)NULL)->idx_from) +  \
+                       sizeof(((struct store_trx_op*)NULL)->idx_to) +    \
+                       sizeof(((struct store_trx_op*)NULL)->new_value) + \
+                       sizeof(((struct store_trx_op*)NULL)->size))
+
+struct store_trx_ctx
+{
+    wsrep_gtid_t         rv_gtid;
+    size_t               ops_num;
+    struct store_trx_op* ops;
+};
+
+static inline void
+store_trx_free(struct store_trx_ctx* const t)
+{
+    if (t)
+    {
+        free(t->ops);
+        free(t);
+    }
+}
+
+static inline bool
+store_trx_add_op(struct store_trx_ctx* const trx)
+{
+    struct store_trx_op* const new_ops =
+        realloc(trx->ops, sizeof(struct store_trx_op)*(trx->ops_num + 1));
+
+    if (new_ops)
+    {
+        trx->ops = new_ops;
+#ifndef NDEBUG
+        memset(&trx->ops[trx->ops_num], 0, sizeof(*trx->ops));
+#endif
+        trx->ops_num++;
+    }
+
+    return (NULL == new_ops);
+}
 
 node_store_t*
 node_store_open(const struct node_options* const opts)
@@ -131,7 +169,7 @@ node_store_open(const struct node_options* const opts)
 
     if (ret)
     {
-        ret->records = malloc((size_t)opts->records * RECORD_SIZE);
+        ret->records = malloc((size_t)opts->records * STORE_RECORD_SIZE);
 
         if (ret->records)
         {
@@ -148,8 +186,9 @@ node_store_open(const struct node_options* const opts)
                 store_record_set(ret->records, i, &record);
             }
 
-            ret->ws_size = (size_t)opts->ws_size > TRX_CTX_SIZE ?
-                (size_t)opts->ws_size : TRX_CTX_SIZE;
+            size_t const desired_size = (size_t)(opts->ws_size/opts->operations);
+            ret->ws_size = desired_size > STORE_OP_SIZE ?
+                desired_size : STORE_OP_SIZE;
         }
         else
         {
@@ -224,7 +263,7 @@ store_new_records(const char* ptr, const char* const endptr,
         return ret;
     }
 
-    size_t const rsize = RECORD_SIZE * *num;
+    size_t const rsize = STORE_RECORD_SIZE * *num;
     if ((endptr - ptr) < (ptrdiff_t)rsize)
     {
         NODE_ERROR("State snapshot does not contain all records: "
@@ -353,7 +392,7 @@ node_store_acquire_state(node_store_t* const store,
     if (!store->snapshot)
     {
         size_t const memb_len = store->members_num * sizeof(member_t);
-        size_t const rec_len  = store->records_num * RECORD_SIZE;
+        size_t const rec_len  = store->records_num * STORE_RECORD_SIZE;
         size_t const buf_len  = WSREP_GTID_STR_LEN + 1
             + sizeof(uint32_t) + memb_len
             + 1 /* read view support */
@@ -535,26 +574,48 @@ node_store_gtid(struct node_store* const store,
 
 
 static inline void
-store_serialize_trx(void* const buf, const struct store_trx_ctx* const trx)
+store_serialize_op(void* const buf, const struct store_trx_op* const op)
 {
     char* ptr = buf;
-    ptr += store_record_set(ptr, 0, &trx->rec_from);
-    ptr += store_record_set(ptr, 0, &trx->rec_to);
-    ptr += store_serialize_uint32(ptr, trx->idx_from);
-    ptr += store_serialize_uint32(ptr, trx->idx_to);
-    store_serialize_uint32(ptr, trx->new_value);
+    ptr += store_record_set(ptr, 0, &op->rec_from);
+    ptr += store_record_set(ptr, 0, &op->rec_to);
+    ptr += store_serialize_uint32(ptr, op->idx_from);
+    ptr += store_serialize_uint32(ptr, op->idx_to);
+    ptr += store_serialize_uint32(ptr, op->new_value);
+    store_serialize_uint32(ptr, op->size);
 }
 
 static inline void
-store_deserialize_trx(struct store_trx_ctx* const trx, const void* const buf)
+store_deserialize_op(struct store_trx_op* const op, const void* const buf)
 {
     const char* ptr = buf;
-    ptr += store_record_get(ptr, 0, &trx->rec_from);
-    ptr += store_record_get(ptr, 0, &trx->rec_to);
-    ptr += store_deserialize_uint32(&trx->idx_from, ptr);
-    ptr += store_deserialize_uint32(&trx->idx_to, ptr);
-    store_deserialize_uint32(&trx->new_value, ptr);
+    ptr += store_record_get(ptr, 0, &op->rec_from);
+    ptr += store_record_get(ptr, 0, &op->rec_to);
+    ptr += store_deserialize_uint32(&op->idx_from, ptr);
+    ptr += store_deserialize_uint32(&op->idx_to, ptr);
+    ptr += store_deserialize_uint32(&op->new_value, ptr);
+    store_deserialize_uint32(&op->size, ptr);
 }
+
+static inline void
+store_serialize_gtid(void* const buf, const wsrep_gtid_t* const gtid)
+{
+    char* ptr = buf;
+    memcpy(ptr, &gtid->uuid, sizeof(gtid->uuid));
+    ptr += sizeof(gtid->uuid);
+    store_serialize_int64(ptr, gtid->seqno);
+}
+
+static inline void
+store_deserialize_gtid(wsrep_gtid_t* const gtid, const void* const buf)
+{
+    const char* ptr = buf;
+    memcpy(&gtid->uuid, ptr, sizeof(gtid->uuid));
+    ptr += sizeof(gtid->uuid);
+    store_deserialize_int64(&gtid->seqno, ptr);
+}
+
+#define STORE_GTID_SIZE (sizeof(((wsrep_gtid_t*)(NULL))->uuid) + sizeof(int64_t))
 
 int
 node_store_execute(node_store_t*      const store,
@@ -563,22 +624,21 @@ node_store_execute(node_store_t*      const store,
 {
     assert(store);
 
-    /* Allocate transaction context object */
-    static size_t const ws_offset = sizeof(struct store_trx_ctx);
-    char* const buf = malloc(ws_offset + store->ws_size);
-
-    /* store allocated memory address directly in trx_id to avoid implementing
-     * hashtable between trx_id and allocated resource for now.
-     * Thus we can free it right away in commit/rollback */
-    assert(sizeof(ws_handle->trx_id) >= sizeof(buf));
-    ws_handle->trx_id = (uintptr_t)buf;
-    if (!buf)
+    if (0 == ws_handle->trx_id)
     {
-        return -ENOMEM;
+        assert(sizeof(ws_handle->trx_id) >= sizeof(uintptr_t));
+
+        /* Allocate transaction context and writeset buffer in one go - just
+         * to minimize the number of system calls (optimization). */
+        ws_handle->trx_id =
+            (uintptr_t)calloc(1, sizeof(struct store_trx_ctx) + store->ws_size);
+
+        if (0 == ws_handle->trx_id) return -ENOMEM;
     }
 
-    struct store_trx_ctx* trx = (struct store_trx_ctx*)buf;
-    wsrep_gtid_t read_view;
+    struct store_trx_ctx* trx = (struct store_trx_ctx*)ws_handle->trx_id;
+    if (store_trx_add_op(trx)) return -ENOMEM;
+    struct store_trx_op* const op = &trx->ops[trx->ops_num - 1];
 
     int err = pthread_mutex_lock(&store->gtid_mtx);
     if (err)
@@ -587,33 +647,68 @@ node_store_execute(node_store_t*      const store,
         abort();
     }
 
-    if (store->read_view_support)
-        read_view = store->gtid; /* ID of the read view of the transaction */
+    if (1 == trx->ops_num)
+    {
+        /* First operation, save ID of the read view of the transaction */
+        trx->rv_gtid = store->gtid;
+    }
 
-    /* Transaction: copy value from one random record to another... */
-    trx->idx_from = (uint32_t)rand() % store->records_num;
-    trx->idx_to   = (uint32_t)rand() % store->records_num;
-    store_record_get(store->records, trx->idx_from, &trx->rec_from);
-    store_record_get(store->records, trx->idx_to,   &trx->rec_to);
+    /* Transaction op: copy value from one random record to another... */
+    op->idx_from = (uint32_t)rand() % store->records_num;
+    op->idx_to   = (uint32_t)rand() % store->records_num;
+    store_record_get(store->records, op->idx_from, &op->rec_from);
+    store_record_get(store->records, op->idx_to,   &op->rec_to);
 
     pthread_mutex_unlock(&store->gtid_mtx);
 
-    /* ... and modify it somehow, e.g. increment by 1 */
-    trx->new_value = trx->rec_from.value + 1;
+    wsrep_status_t ret = WSREP_TRX_FAIL;
 
-    wsrep_status_t ret;
-
-    /* REPLICATION: Since this application does not implement record locks,
-     *              it needs to establish read view for each transaction for a
-     *              proper conflict detection and transaction isolation.
-     *              Otherwose we'll need to implement record versioning */
-    if (store->read_view_support)
+    if (op->rec_from.version > trx->rv_gtid.seqno ||
+        op->rec_to.version   > trx->rv_gtid.seqno)
     {
-        ret = wsrep->assign_read_view(wsrep, ws_handle, &read_view);
-        if (ret && ret != WSREP_NOT_IMPLEMENTED) goto error;
+        /* transaction read view changed, trx needs to be restarted */
+        NODE_INFO("Transaction read view changed: %lld -> %lld, returning %d",
+                  (long long)trx->rv_gtid.seqno,
+                  (long long)(op->rec_from.version > op->rec_to.version ?
+                              op->rec_from.version : op->rec_to.version),
+                  ret);
+        goto error;
     }
 
-    /* REPLICATION: append keys touched by the transaction
+    /* Transaction op: ... and modify it somehow, e.g. increment by 1 */
+    op->new_value = op->rec_from.value + 1;
+
+    if (1 == trx->ops_num) // first trx operation
+    {
+        /* REPLICATION: Since this application does not implement record locks,
+         *              it needs to establish read view for each transaction for
+         *              a proper conflict detection and transaction isolation.
+         *              Otherwose we'll need to implement record versioning */
+        if (store->read_view_support)
+        {
+            ret = wsrep->assign_read_view(wsrep, ws_handle, &trx->rv_gtid);
+            if (ret)
+            {
+                NODE_ERROR("wsrep::assign_read_view(%lld) failed: %d",
+                           trx->rv_gtid.seqno, ret);
+                goto error;
+            }
+        }
+
+        /* Record read view in the writeset for debugging purposes */
+        assert(store->ws_size > STORE_GTID_SIZE);
+        store_serialize_gtid(trx + 1, &trx->rv_gtid);
+        wsrep_buf_t ws = { .ptr = trx + 1, .len = STORE_GTID_SIZE };
+        ret = wsrep->append_data(wsrep, ws_handle, &ws, 1, WSREP_DATA_ORDERED,
+                                 true);
+        if (ret)
+        {
+            NODE_ERROR("wsrep::append_data(rv_gtid) failed: %d", ret);
+            goto error;
+        }
+    }
+
+    /* REPLICATION: append keys touched by the operation
      *
      * NOTE: depending on data access granularity some applications may require
      *       multipart keys, e.g. <schema>:<table>:<row> in a SQL database.
@@ -622,42 +717,50 @@ node_store_execute(node_store_t*      const store,
      *       different records. */
     uint32_t    key_val;
     wsrep_buf_t key_part = { .ptr = &key_val, .len = sizeof(key_val) };
-    wsrep_key_t ws_key = { .key_parts = &key_part, .key_parts_num = 1 };
+    wsrep_key_t ws_key   = { .key_parts = &key_part, .key_parts_num = 1 };
 
     /* REPLICATION: Key 1 - the key of the source, unchanged record */
-    store_serialize_uint32(&key_val, trx->idx_from);
+    store_serialize_uint32(&key_val, op->idx_from);
     ret = wsrep->append_key(wsrep, ws_handle,
                             &ws_key,
                             1,   /* single key */
                             WSREP_KEY_REFERENCE,
                             true /* provider shall make a copy of the key */);
-    if (ret) goto error;
+    if (ret)
+    {
+        NODE_ERROR("wsrep::append_key(REFERENCE) failed: %d", ret);
+        goto error;
+    }
 
     /* REPLICATION: Key 2 - the key of the record we want to update */
-    store_serialize_uint32(&key_val, trx->idx_to);
+    store_serialize_uint32(&key_val, op->idx_to);
     ret = wsrep->append_key(wsrep, ws_handle,
                             &ws_key,
                             1,   /* single key */
                             WSREP_KEY_UPDATE,
                             true /* provider shall make a copy of the key */);
-    if (ret) goto error;
+    if (ret)
+    {
+        NODE_ERROR("wsrep::append_key(UPDATE) failed: %d", ret);
+        goto error;
+    }
 
-    /* REPLICATION: append the actual transaction "writeset", which is
-     *              essentially serialized transation context
-     *
-     * NOTE: ws storage was dynamically allocated and has the same durability
-     *       as the transaction context. Hence provider does not need to make
-     *       own copy */
-    wsrep_buf_t ws = { .ptr = buf + ws_offset, .len = store->ws_size };
-    assert(ws.len >= TRX_CTX_SIZE);
-    store_serialize_trx((void*)ws.ptr, trx);
-    ret = wsrep->append_data(wsrep, ws_handle,
-                             &ws, 1, WSREP_DATA_ORDERED,
-                             false /* no need to make a copy */);
+    /* REPLICATION: append transaction operation to the "writeset"
+     *              (WS buffer was allocated together with trx context above) */
+    assert(store->ws_size >= STORE_OP_SIZE);
+    assert(store->ws_size == (uint32_t)store->ws_size);
+    op->size = (uint32_t)store->ws_size;
+    store_serialize_op(trx + 1, op);
+    wsrep_buf_t ws = { .ptr = trx + 1, .len = store->ws_size };
+    ret = wsrep->append_data(wsrep, ws_handle, &ws, 1, WSREP_DATA_ORDERED, true);
+
     if (!ret) return 0;
 
+    NODE_ERROR("wsrep::append_data(op) failed: %d", ret);
+
 error:
-    free(buf);
+    store_trx_free(trx);
+
     return ret;
 }
 
@@ -669,17 +772,49 @@ node_store_apply(node_store_t*      const store,
     assert(store);
     (void)store;
 
-    struct store_trx_ctx* const trx = malloc(sizeof(struct store_trx_ctx));
-    *trx_id = (uintptr_t)trx;
-    if (!trx)
+    *trx_id = (uintptr_t)calloc(1, sizeof(struct store_trx_ctx));
+    if (0 == *trx_id)
     {
         return -ENOMEM;
     }
+    struct store_trx_ctx* const trx = (struct store_trx_ctx*)*trx_id;
 
     /* prepare trx context for commit */
-    assert(ws->len >= TRX_CTX_SIZE);
-    store_deserialize_trx(trx, ws->ptr);
-    assert(trx->idx_to <= store->records_num);
+    const char* ptr = ws->ptr;
+    size_t left     = ws->len;
+
+    /* at least one operation should be there */
+    assert(left >= STORE_GTID_SIZE + STORE_OP_SIZE);
+
+    if (left >= STORE_GTID_SIZE)
+    {
+        store_deserialize_gtid(&trx->rv_gtid, ptr);
+        left -= STORE_GTID_SIZE;
+        ptr  += STORE_GTID_SIZE;
+    }
+
+    while (left >= STORE_OP_SIZE)
+    {
+        if (store_trx_add_op(trx))
+        {
+            store_trx_free(trx); /* kind of "rollback" */
+            return -ENOMEM;
+        }
+        struct store_trx_op* const op = &trx->ops[trx->ops_num - 1];
+
+        store_deserialize_op(op, ptr);
+        assert(op->idx_to <= store->records_num);
+
+        left -= op->size;
+        ptr  += op->size;
+    }
+
+    if (left != 0)
+    {
+        NODE_FATAL("Failed to process last (%d/%zu) bytes of the writeset.",
+                   (int)left, ws->len);
+        abort();
+    }
 
     return 0;
 }
@@ -714,7 +849,8 @@ store_checksum_state(node_store_t* store)
         res = store_fnv32a(&store->members[i], sizeof(*store->members), res);
     }
 
-    res = store_fnv32a(store->records, store->records_num * RECORD_SIZE, res);
+    res = store_fnv32a(store->records, store->records_num * STORE_RECORD_SIZE,
+                       res);
 
     res = store_fnv32a(&store->gtid.uuid, sizeof(store->gtid.uuid), res);
 
@@ -757,9 +893,6 @@ node_store_commit(node_store_t*       const store,
     struct store_trx_ctx* const trx = (struct store_trx_ctx*)trx_id;
     assert(trx);
 
-    record_t const new_record =
-        { .version = ws_gtid->seqno, .value = trx->new_value };
-
     bool const check_read_view_snapshot =
 #ifdef NDEBUG
         !store->read_view_support;
@@ -777,55 +910,75 @@ node_store_commit(node_store_t*       const store,
 
     store_update_gtid(store, ws_gtid);
 
+    /* First loop is to check if we can commit all operations if provider
+     * does not support read view or for debugging puposes */
+    size_t i;
     if (check_read_view_snapshot)
     {
-        record_t from, to;
-        store_record_get(store->records, trx->idx_from, &from);
-        store_record_get(store->records, trx->idx_to,   &to);
-
-        assert(from.version < ws_gtid->seqno);
-        assert(to.version < ws_gtid->seqno);
-
-        if (!store_record_equal(&trx->rec_from, &from) ||
-            !store_record_equal(&trx->rec_to,   &to))
+        for (i = 0; i < trx->ops_num; i++)
         {
-            /* read view changed since transaction was executed, can't commit */
-            assert(trx->rec_from.version <= from.version);
-            assert(trx->rec_to.version <= to.version);
-            if (trx->rec_from.version == from.version)
-                assert(trx->rec_from.value == from.value);
-            if (trx->rec_to.version == to.version)
-                assert(trx->rec_to.value == to.value);
-            assert(!store->read_view_support);
+            struct store_trx_op* const op = &trx->ops[i];
 
-            store->read_view_fails++;
+            record_t from, to;
+            store_record_get(store->records, op->idx_from, &from);
+            store_record_get(store->records, op->idx_to,   &to);
 
-            goto error;
+            assert(from.version <= trx->rv_gtid.seqno);
+            assert(to.version   <= trx->rv_gtid.seqno);
+
+            if (!store_record_equal(&op->rec_from, &from) ||
+                !store_record_equal(&op->rec_to,   &to))
+            {
+                /* read view changed since transaction was executed,
+                 * can't commit */
+                assert(op->rec_from.version <= from.version);
+                assert(op->rec_to.version <= to.version);
+                if (op->rec_from.version == from.version)
+                    assert(op->rec_from.value == from.value);
+                if (op->rec_to.version == to.version)
+                    assert(op->rec_to.value == to.value);
+                if (store->read_view_support) abort();
+
+                store->read_view_fails++;
+
+                NODE_INFO("Read view changed at commit time, rollback trx");
+
+                goto error;
+            }
         }
     }
 
-    store_record_set(store->records, trx->idx_to, &new_record);
+    /* Second loop is to actually modify the dataset */
+    for (i = 0; i < trx->ops_num; i++)
+    {
+        struct store_trx_op* const op = &trx->ops[i];
+
+        record_t const new_record =
+            { .version = ws_gtid->seqno, .value = op->new_value };
+
+        store_record_set(store->records, op->idx_to, &new_record);
+    }
 
 error:
     pthread_mutex_unlock(&store->gtid_mtx);
 
-    free(trx);
+    store_trx_free(trx);
 }
 
 void
-node_store_rollback(node_store_t*  store,
-                    wsrep_trx_id_t trx_id)
+node_store_rollback(node_store_t*  const store,
+                    wsrep_trx_id_t const trx_id)
 {
     assert(store);
     (void)store;
     assert(trx_id);
 
-    free((void*)trx_id); /* all resources allocated for trx are here */
+    store_trx_free((struct store_trx_ctx*)trx_id);
 }
 
 void
-node_store_update_gtid(node_store_t*       store,
-                       const wsrep_gtid_t* ws_gtid)
+node_store_update_gtid(node_store_t*       const store,
+                       const wsrep_gtid_t* const ws_gtid)
 {
     assert(store);
 
@@ -843,7 +996,7 @@ node_store_update_gtid(node_store_t*       store,
 }
 
 long
-node_store_read_view_failures(node_store_t* store)
+node_store_read_view_failures(node_store_t* const store)
 {
     assert(store);
 

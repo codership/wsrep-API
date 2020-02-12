@@ -999,8 +999,10 @@ struct wsrep_st {
   /*!
    * @brief Appends data to transaction writeset
    *
-   * This method can be called any time before commit and it
-   * appends a number of data buffers to transaction writeset.
+   * This method can be called any time before certify() call and it appends
+   * a data buffer to the transaction writeset.
+   * Repeated calls of the method will result in direct buffer concatenation
+   * and all data will be passed as a single buffer to the apply callback.
    *
    * Both copy and unordered flags can be ignored by provider.
    *

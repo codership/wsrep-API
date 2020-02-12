@@ -31,7 +31,8 @@
 extern wsrep_status_t
 node_trx_execute(node_store_t*   store,
                  wsrep_t*        wsrep,
-                 wsrep_conn_id_t conn_id);
+                 wsrep_conn_id_t conn_id,
+                 int             ops_num);
 
 /**
  * applies and commits slave write set
