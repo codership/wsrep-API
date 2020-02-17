@@ -27,24 +27,6 @@
 #include <stdlib.h>   // abort()
 #include <string.h>   // memset()
 
-typedef wsrep_uuid_t member_t;
-
-struct node_store
-{
-    wsrep_gtid_t    gtid;
-    pthread_mutex_t gtid_mtx;
-    wsrep_trx_id_t  trx_id;
-    pthread_mutex_t trx_id_mtx;
-    char*           snapshot;
-    member_t*       members;
-    void*           records;
-    size_t          ws_size;
-    long            read_view_fails;
-    uint32_t        members_num;
-    uint32_t        records_num;
-    bool            read_view_support; // read view support by cluster
-};
-
 #define DECLARE_SERIALIZE_INT(INTTYPE)                                  \
     static inline size_t                                                \
     store_serialize_##INTTYPE(void* const to, INTTYPE##_t const from)   \
@@ -134,16 +116,6 @@ struct store_trx_ctx
     struct store_trx_op* ops;
 };
 
-static inline void
-store_trx_free(struct store_trx_ctx* const t)
-{
-    if (t)
-    {
-        free(t->ops);
-        free(t);
-    }
-}
-
 static inline bool
 store_trx_add_op(struct store_trx_ctx* const trx)
 {
@@ -162,13 +134,64 @@ store_trx_add_op(struct store_trx_ctx* const trx)
     return (NULL == new_ops);
 }
 
+struct store_trx_entry
+{
+    bool                 used;
+    struct store_trx_ctx ctx;
+};
+
+typedef wsrep_uuid_t member_t;
+
+struct node_store
+{
+    wsrep_gtid_t    gtid;
+    pthread_mutex_t gtid_mtx;
+    wsrep_trx_id_t  trx_id;
+    pthread_mutex_t trx_id_mtx;
+    char*           snapshot;
+    member_t*       members;
+    void*           records;
+    size_t          op_size;
+    long            read_view_fails;
+    uint32_t        members_num;
+    uint32_t        records_num;
+    uint32_t        entries_mask;
+    bool            read_view_support; // read view support by cluster
+    /* trx pool piggybacked */
+};
+
 node_store_t*
 node_store_open(const struct node_options* const opts)
 {
-    struct node_store* ret = calloc(1, sizeof(struct node_store));
+    /* make the size of trx pool the next highest power of 2 over the total
+     * number of workers */
+    uint32_t trx_pool_mask = (uint32_t)(opts->masters + opts->slaves);
+    if (trx_pool_mask > 0)
+    {
+        trx_pool_mask -= 1;
+        trx_pool_mask |= trx_pool_mask >> 1;
+        trx_pool_mask |= trx_pool_mask >> 2;
+        trx_pool_mask |= trx_pool_mask >> 4;
+        trx_pool_mask |= trx_pool_mask >> 8;
+        trx_pool_mask |= trx_pool_mask >> 16;
+    }
+    assert(((trx_pool_mask + 1) & trx_pool_mask) == 0); // 2^n - 1
+
+    size_t const desired_op_size = (size_t)(opts->ws_size/opts->operations);
+    size_t const op_size = (desired_op_size > STORE_OP_SIZE ?
+                            desired_op_size : STORE_OP_SIZE);
+
+    /* since the number of workers will never change, we can allocate trx pool
+     * together with the main store struc */
+    size_t const store_alloc_size = sizeof(struct node_store) +
+        /* op_size - additional buffer for op serialization per trx */
+        (sizeof(struct store_trx_entry) + op_size)*(trx_pool_mask + 1);
+
+    struct node_store* const ret = malloc(store_alloc_size);
 
     if (ret)
     {
+        memset(ret, 0, store_alloc_size);
         ret->records = malloc((size_t)opts->records * STORE_RECORD_SIZE);
 
         if (ret->records)
@@ -176,7 +199,9 @@ node_store_open(const struct node_options* const opts)
             ret->gtid = WSREP_GTID_UNDEFINED;
             pthread_mutex_init(&ret->gtid_mtx, NULL);
             pthread_mutex_init(&ret->trx_id_mtx, NULL);
-            ret->records_num = (uint32_t)opts->records;
+            ret->op_size      = op_size;
+            ret->records_num  = (uint32_t)opts->records;
+            ret->entries_mask = trx_pool_mask;
 
             uint32_t i;
             for (i = 0; i < ret->records_num; i++)
@@ -186,22 +211,19 @@ node_store_open(const struct node_options* const opts)
                 store_record_set(ret->records, i, &record);
             }
 
-            size_t const desired_size = (size_t)(opts->ws_size/opts->operations);
-            ret->ws_size = desired_size > STORE_OP_SIZE ?
-                desired_size : STORE_OP_SIZE;
+            return ret;
         }
         else
         {
             free(ret);
-            ret = NULL;
         }
     }
 
-    return ret;
+    return NULL;
 }
 
 void
-node_store_close(struct node_store* store)
+node_store_close(struct node_store* const store)
 {
     assert(store);
     assert(store->records);
@@ -210,6 +232,69 @@ node_store_close(struct node_store* store)
     free(store->records);
     free(store->members);
     free(store);
+}
+
+#define STORE_MUTEX_LOCK(mtx)                              \
+    {                                                      \
+        int err = pthread_mutex_lock(mtx);                 \
+        if (err)                                           \
+        {                                                  \
+            NODE_FATAL("Failed to lock " #mtx ": %d (%s)", \
+                       err, strerror(err));                \
+            abort();                                       \
+        }                                                  \
+    }
+
+static inline struct store_trx_entry*
+store_get_trx_entry(struct node_store* const store, wsrep_trx_id_t const trx_id)
+{
+    return (struct store_trx_entry*)
+        ((char*)(store + 1) + (trx_id & store->entries_mask)*
+         (sizeof(struct store_trx_entry) + store->op_size));
+}
+
+static inline struct store_trx_ctx*
+store_get_trx_ctx(struct node_store* const store, wsrep_trx_id_t const trx_id)
+{
+    return &(store_get_trx_entry(store, trx_id)->ctx);
+}
+
+static inline wsrep_trx_id_t
+store_new_trx_id(struct node_store* const store)
+{
+    wsrep_trx_id_t ret;
+    struct store_trx_entry* trx;
+
+    STORE_MUTEX_LOCK(&store->trx_id_mtx);
+
+    do
+    {
+        store->trx_id++;
+        trx = store_get_trx_entry(store, store->trx_id);
+    }
+    while (trx->used);
+    trx->used = true;
+    ret = store->trx_id;
+
+    pthread_mutex_unlock(&store->trx_id_mtx);
+
+    memset(&trx->ctx, 0, sizeof(trx->ctx));
+
+    return ret;
+}
+
+static inline void
+store_free_trx_id(struct node_store* const store, wsrep_trx_id_t const trx_id)
+{
+    struct store_trx_entry* const trx = store_get_trx_entry(store, trx_id);
+    assert(trx->used);
+    free(trx->ctx.ops);
+
+    STORE_MUTEX_LOCK(&store->trx_id_mtx);
+
+    trx->used = false;
+
+    pthread_mutex_unlock(&store->trx_id_mtx);
 }
 
 /**
@@ -341,12 +426,7 @@ node_store_init_state(struct node_store*  const store,
     }
     ptr += ret;
 
-    ret = pthread_mutex_lock(&store->gtid_mtx);
-    if (ret)
-    {
-        NODE_FATAL("Failed to lock store GTID");
-        abort();
-    }
+    STORE_MUTEX_LOCK(&store->gtid_mtx);
 
     /* just a sanity check */
     if (0 == wsrep_uuid_compare(&state_gtid.uuid, &store->gtid.uuid) &&
@@ -382,12 +462,9 @@ node_store_acquire_state(node_store_t* const store,
                          const void**  const state,
                          size_t*       const state_len)
 {
-    int ret = pthread_mutex_lock(&store->gtid_mtx);
-    if (ret)
-    {
-        NODE_FATAL("Failed to lock store GTID");
-        abort();
-    }
+    int ret = 0;
+
+    STORE_MUTEX_LOCK(&store->gtid_mtx);
 
     if (!store->snapshot)
     {
@@ -473,12 +550,7 @@ node_store_acquire_state(node_store_t* const store,
 void
 node_store_release_state(node_store_t* const store)
 {
-    int ret = pthread_mutex_lock(&store->gtid_mtx);
-    if (ret)
-    {
-        NODE_FATAL("Failed to lock store GTID");
-        abort();
-    }
+    STORE_MUTEX_LOCK(&store->gtid_mtx);
 
     assert(store->snapshot);
     free(store->snapshot);
@@ -495,13 +567,7 @@ node_store_update_membership(struct node_store*       const store,
     assert(WSREP_VIEW_PRIMARY == v->status);
         assert(v->memb_num > 0);
 
-    int ret;
-    ret = pthread_mutex_lock(&store->gtid_mtx);
-    if (ret)
-    {
-        NODE_FATAL("Failed to lock store GTID");
-        abort();
-    }
+    STORE_MUTEX_LOCK(&store->gtid_mtx);
 
     bool const continuation = v->state_id.seqno == store->gtid.seqno + 1 &&
         0 == wsrep_uuid_compare(&v->state_id.uuid, &store->gtid.uuid);
@@ -551,7 +617,7 @@ node_store_update_membership(struct node_store*       const store,
 
     pthread_mutex_unlock(&store->gtid_mtx);
 
-    return ret;
+    return 0;
 }
 
 void
@@ -560,15 +626,10 @@ node_store_gtid(struct node_store* const store,
 {
     assert(store);
 
-    int ret;
-    ret = pthread_mutex_lock(&store->gtid_mtx);
-    if (ret)
-    {
-        NODE_FATAL("Failed to lock store GTID");
-        abort();
-    }
+    STORE_MUTEX_LOCK(&store->gtid_mtx);
 
     *gtid = store->gtid;
+
     pthread_mutex_unlock(&store->gtid_mtx);
 }
 
@@ -627,25 +688,14 @@ node_store_execute(node_store_t*      const store,
     if (0 == ws_handle->trx_id)
     {
         assert(sizeof(ws_handle->trx_id) >= sizeof(uintptr_t));
-
-        /* Allocate transaction context and writeset buffer in one go - just
-         * to minimize the number of system calls (optimization). */
-        ws_handle->trx_id =
-            (uintptr_t)calloc(1, sizeof(struct store_trx_ctx) + store->ws_size);
-
-        if (0 == ws_handle->trx_id) return -ENOMEM;
+        ws_handle->trx_id = store_new_trx_id(store);
     }
 
-    struct store_trx_ctx* trx = (struct store_trx_ctx*)ws_handle->trx_id;
+    struct store_trx_ctx* trx = store_get_trx_ctx(store, ws_handle->trx_id);
     if (store_trx_add_op(trx)) return -ENOMEM;
     struct store_trx_op* const op = &trx->ops[trx->ops_num - 1];
 
-    int err = pthread_mutex_lock(&store->gtid_mtx);
-    if (err)
-    {
-        NODE_FATAL("Failed to lock store GTID");
-        abort();
-    }
+    STORE_MUTEX_LOCK(&store->gtid_mtx);
 
     if (1 == trx->ops_num)
     {
@@ -667,11 +717,13 @@ node_store_execute(node_store_t*      const store,
         op->rec_to.version   > trx->rv_gtid.seqno)
     {
         /* transaction read view changed, trx needs to be restarted */
+#if 0
         NODE_INFO("Transaction read view changed: %lld -> %lld, returning %d",
                   (long long)trx->rv_gtid.seqno,
                   (long long)(op->rec_from.version > op->rec_to.version ?
                               op->rec_from.version : op->rec_to.version),
                   ret);
+#endif
         goto error;
     }
 
@@ -696,7 +748,7 @@ node_store_execute(node_store_t*      const store,
         }
 
         /* Record read view in the writeset for debugging purposes */
-        assert(store->ws_size > STORE_GTID_SIZE);
+        assert(store->op_size > STORE_GTID_SIZE);
         store_serialize_gtid(trx + 1, &trx->rv_gtid);
         wsrep_buf_t ws = { .ptr = trx + 1, .len = STORE_GTID_SIZE };
         ret = wsrep->append_data(wsrep, ws_handle, &ws, 1, WSREP_DATA_ORDERED,
@@ -747,11 +799,11 @@ node_store_execute(node_store_t*      const store,
 
     /* REPLICATION: append transaction operation to the "writeset"
      *              (WS buffer was allocated together with trx context above) */
-    assert(store->ws_size >= STORE_OP_SIZE);
-    assert(store->ws_size == (uint32_t)store->ws_size);
-    op->size = (uint32_t)store->ws_size;
+    assert(store->op_size >= STORE_OP_SIZE);
+    assert(store->op_size == (uint32_t)store->op_size);
+    op->size = (uint32_t)store->op_size;
     store_serialize_op(trx + 1, op);
-    wsrep_buf_t ws = { .ptr = trx + 1, .len = store->ws_size };
+    wsrep_buf_t ws = { .ptr = trx + 1, .len = store->op_size };
     ret = wsrep->append_data(wsrep, ws_handle, &ws, 1, WSREP_DATA_ORDERED, true);
 
     if (!ret) return 0;
@@ -759,7 +811,7 @@ node_store_execute(node_store_t*      const store,
     NODE_ERROR("wsrep::append_data(op) failed: %d", ret);
 
 error:
-    store_trx_free(trx);
+    store_free_trx_id(store, ws_handle->trx_id);
 
     return ret;
 }
@@ -772,12 +824,8 @@ node_store_apply(node_store_t*      const store,
     assert(store);
     (void)store;
 
-    *trx_id = (uintptr_t)calloc(1, sizeof(struct store_trx_ctx));
-    if (0 == *trx_id)
-    {
-        return -ENOMEM;
-    }
-    struct store_trx_ctx* const trx = (struct store_trx_ctx*)*trx_id;
+    *trx_id = store_new_trx_id(store);
+    struct store_trx_ctx* const trx = store_get_trx_ctx(store, *trx_id);
 
     /* prepare trx context for commit */
     const char* ptr = ws->ptr;
@@ -797,7 +845,7 @@ node_store_apply(node_store_t*      const store,
     {
         if (store_trx_add_op(trx))
         {
-            store_trx_free(trx); /* kind of "rollback" */
+            store_free_trx_id(store,*trx_id); /* "rollback": release resources */
             return -ENOMEM;
         }
         struct store_trx_op* const op = &trx->ops[trx->ops_num - 1];
@@ -889,9 +937,9 @@ node_store_commit(node_store_t*       const store,
                   const wsrep_gtid_t* const ws_gtid)
 {
     assert(store);
+    assert(trx_id);
 
-    struct store_trx_ctx* const trx = (struct store_trx_ctx*)trx_id;
-    assert(trx);
+    struct store_trx_ctx* const trx = store_get_trx_ctx(store, trx_id);
 
     bool const check_read_view_snapshot =
 #ifdef NDEBUG
@@ -900,13 +948,7 @@ node_store_commit(node_store_t*       const store,
     1;
 #endif /* NDEBUG */
 
-    int ret;
-    ret = pthread_mutex_lock(&store->gtid_mtx);
-    if (ret)
-    {
-        NODE_FATAL("Failed to lock store GTID");
-        abort();
-    }
+    STORE_MUTEX_LOCK(&store->gtid_mtx);
 
     store_update_gtid(store, ws_gtid);
 
@@ -922,9 +964,6 @@ node_store_commit(node_store_t*       const store,
             record_t from, to;
             store_record_get(store->records, op->idx_from, &from);
             store_record_get(store->records, op->idx_to,   &to);
-
-            assert(from.version <= trx->rv_gtid.seqno);
-            assert(to.version   <= trx->rv_gtid.seqno);
 
             if (!store_record_equal(&op->rec_from, &from) ||
                 !store_record_equal(&op->rec_to,   &to))
@@ -962,7 +1001,7 @@ node_store_commit(node_store_t*       const store,
 error:
     pthread_mutex_unlock(&store->gtid_mtx);
 
-    store_trx_free(trx);
+    store_free_trx_id(store, trx_id);
 }
 
 void
@@ -970,10 +1009,9 @@ node_store_rollback(node_store_t*  const store,
                     wsrep_trx_id_t const trx_id)
 {
     assert(store);
-    (void)store;
     assert(trx_id);
 
-    store_trx_free((struct store_trx_ctx*)trx_id);
+    store_free_trx_id(store, trx_id);
 }
 
 void
@@ -982,13 +1020,7 @@ node_store_update_gtid(node_store_t*       const store,
 {
     assert(store);
 
-    int ret;
-    ret = pthread_mutex_lock(&store->gtid_mtx);
-    if (ret)
-    {
-        NODE_FATAL("Failed to lock store GTID");
-        abort();
-    }
+    STORE_MUTEX_LOCK(&store->gtid_mtx);
 
     store_update_gtid(store, ws_gtid);
 
@@ -1001,12 +1033,8 @@ node_store_read_view_failures(node_store_t* const store)
     assert(store);
 
     long ret;
-    ret = pthread_mutex_lock(&store->gtid_mtx);
-    if (ret)
-    {
-        NODE_FATAL("Failed to lock store GTID");
-        abort();
-    }
+
+    STORE_MUTEX_LOCK(&store->gtid_mtx);
 
     ret = store->read_view_fails;;
 
