@@ -40,8 +40,10 @@ node_trx_execute(node_store_t*   const store,
     {
         if (0 != (ret = node_store_execute(store, wsrep, &ws_handle)))
         {
+#if 0
             NODE_INFO("master [%d]: node_store_execute() returned %d",
                       conn_id, ret);
+#endif
             ret = WSREP_TRX_FAIL;
             goto cleanup;
         }

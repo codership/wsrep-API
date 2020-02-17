@@ -1,4 +1,4 @@
-/* Copyright (c) 2019, Codership Oy. All rights reserved.
+/* Copyright (c) 2019-2020, Codership Oy. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -81,30 +81,33 @@ stats_establish_mapping(wsrep_t* const wsrep)
         stats_galera_map[i] = magic_map; /* initialize map array */
     }
 
-    struct wsrep_stats_var* const ret = wsrep->stats_get(wsrep);
+    struct wsrep_stats_var* const stats = wsrep->stats_get(wsrep);
 
     /* to compensate for STATS_TOTAL_* and STATS_STORE_FAILS having no
      * counterparts */
     int mapped = 3;
 
     i = 0;
-    while (ret[i].name)
+    while (stats[i].name) /* stats array is terminated by Null name */
     {
         int j;
         for (j = 0; j < STATS_MAX; j++)
         {
             if (magic_map == stats_galera_map[j] /* j-th member still unset */
                 &&
-                !strcmp(ret[i].name, galera_ids[j]))
+                !strcmp(stats[i].name, galera_ids[j]))
             {
                 stats_galera_map[j] = (int)i;
                 mapped++;
-                if (STATS_MAX == mapped) /* all mapped */ return;
+                if (STATS_MAX == mapped) /* all mapped */ goto out;
             }
         }
 
         i++;
     }
+
+out:
+    wsrep->stats_free(wsrep, stats);
 }
 
 static void
