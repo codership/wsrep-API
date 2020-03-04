@@ -210,7 +210,7 @@ extern "C"
      *
      * @param Mutex to be locked.
      *
-     * @return Zero if mutex was succesfully locked.
+     * @return Zero if mutex was successfully locked.
      * @return EBUSY if the mutex could not be acquired because it was already
      *         locked.
      * @return Non-zero error code on any other error.
