@@ -663,9 +663,10 @@ typedef struct wsrep_key
 } wsrep_key_t;
 
 /*! Key type:
- *  EXCLUSIVE conflicts with any key type
- *  SEMI      reserved. If not supported, should be interpreted as EXCLUSIVE
- *  SHARED    conflicts only with EXCLUSIVE keys */
+ *  SHARED    - higher level resource shared between clients, e.g. SQL table
+ *  REFERENCE - resource referenced but not modified, e.g. parent row
+ *  UPDATE    - resource is modified
+ *  EXCLUSIVE - resource is either created or deleted */
 typedef enum wsrep_key_type
 {
     WSREP_KEY_SHARED = 0,
