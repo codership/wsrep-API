@@ -1365,7 +1365,8 @@ struct wsrep_st {
 int wsrep_load(const char* spec, wsrep_t** hptr, wsrep_log_cb_t log_cb);
 
 /*!
- * @brief Unloads wsrep library and frees associated resources
+ * @brief Unloads the wsrep library. The application must call
+ * wsrep->free() before unload to release library side resources.
  *
  * @param hptr wsrep handler pointer
  */
