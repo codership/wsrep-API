@@ -1,4 +1,4 @@
-# Copyright (c) 2018, Codership Oy. All rights reserved.
+# Copyright (c) 2019, Codership Oy. All rights reserved.
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -13,18 +13,7 @@
 # along with this program; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301 USA
 
-CMAKE_MINIMUM_REQUIRED(VERSION 2.8)
+ADD_EXECUTABLE(listener listener.c)
+TARGET_LINK_LIBRARIES(listener wsrep dl pthread)
 
-INCLUDE_DIRECTORIES(".")
-
-SET(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -Wextra -Werror -Wconversion")
-
-IF (NOT CMAKE_BUILD_TYPE)
-    SET(CMAKE_BUILD_TYPE Release)
-ENDIF()
-
-SET(WSREP_SOURCES wsrep_gtid.c wsrep_uuid.c wsrep_loader.c wsrep_dummy.c)
-
-ADD_LIBRARY(wsrep ${WSREP_SOURCES})
-
-ADD_SUBDIRECTORY(examples)
+ADD_SUBDIRECTORY(node)

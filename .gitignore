@@ -1,3 +1,10 @@
+*~
 *.o
 *.a
+*.diff
 listener
+CMakeFiles
+CMakeCache.txt
+cmake_install.cmake
+Makefile
+examples/node/node
