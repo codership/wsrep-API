@@ -79,12 +79,21 @@ int main(int argc, char* argv[])
     wsrep_gtid_t current_gtid;
     node_store_gtid(node.store, &current_gtid);
 
-    /* REPLICATION: now we can connect to the cluster and start receiving
-     *              replication events */
-    node.wsrep = node_wsrep_open(&opts, &current_gtid, &node);
+    /* REPLICATION: complete initialization of application context
+     *              (including provider itself) */
+    node.wsrep = node_wsrep_init(&opts, &current_gtid, &node);
     if (!node.wsrep)
     {
-        NODE_FATAL("Failed to open wsrep provider");
+        NODE_FATAL("Failed to initialize wsrep provider");
+        return 1;
+    }
+
+    /* REPLICATION: now we can connect to the cluster and start receiving
+     *              replication events */
+    if (node_wsrep_connect(node.wsrep, opts.address, opts.bootstrap) !=
+        WSREP_OK)
+    {
+        NODE_FATAL("Failed to connect to primary component");
         return 1;
     }
 

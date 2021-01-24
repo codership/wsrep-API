@@ -306,7 +306,7 @@ wsrep_synced_cb(void* const x)
 }
 
 struct node_wsrep*
-node_wsrep_open(const struct node_options* const opts,
+node_wsrep_init(const struct node_options* const opts,
                 const wsrep_gtid_t*        const current_gtid,
                 void*                      const app_ctx)
 {
@@ -371,22 +371,29 @@ node_wsrep_open(const struct node_options* const opts,
         return NULL;
     }
 
-    s_wsrep.bootstrap = opts->bootstrap;
-    err = wsrep->connect(wsrep,
-                         "wsrep_cluster",
-                         opts->address,
-                         NULL,
-                         s_wsrep.bootstrap);
+    return &s_wsrep;
+}
+
+wsrep_status_t
+node_wsrep_connect(struct node_wsrep* const wsrep,
+                   const char*        const address,
+                   bool               const bootstrap)
+{
+    wsrep->bootstrap = bootstrap;
+    wsrep_status_t err = wsrep->instance->connect(wsrep->instance,
+                                                  "wsrep_cluster",
+                                                  address,
+                                                  NULL,
+                                                  wsrep->bootstrap);
 
     if (WSREP_OK != err)
     {
         NODE_ERROR("wsrep::connect(%s) failed: %d, must shutdown",
-                   opts->address, err);
-        node_wsrep_close(&s_wsrep);
-        return NULL;
+                   address, err);
+        node_wsrep_close(wsrep);
     }
 
-    return &s_wsrep;
+    return err;
 }
 
 void

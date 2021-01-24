@@ -36,11 +36,27 @@ typedef struct node_wsrep node_wsrep_t;
  * @param[in] opts         program options
  * @param[in] current_gtid GTID corresponding to the current node state
  * @param[in] app_ctx      application context to be passed to callbacks
+ *
+ * @return initialized object pointer
  */
 extern node_wsrep_t*
-node_wsrep_open(const struct node_options* opts,
+node_wsrep_init(const struct node_options* opts,
                 const wsrep_gtid_t*        current_gtid,
                 void*                      app_ctx);
+
+/**
+ * connects to primary component
+ *
+ * @param[in] wsrep      wsrep context
+ * @param[in] address    address to connect at (provider specific)
+ * @param[in] bootsstrap bootstrap primary component if there's none
+ *
+ * @return wsrep status code
+ */
+extern wsrep_status_t
+node_wsrep_connect(node_wsrep_t* wsrep,
+                   const char*   address,
+                   bool          bootstrap);
 
 /**
  * disconnects from primary component
