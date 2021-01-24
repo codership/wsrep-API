@@ -83,7 +83,7 @@ static const char* opts_string = "a:d:f:hi:m:n:o:p:r:s:t:v:w:x:";
 static const struct node_options opts_defaults =
 {
     .provider  = "none",
-    .address   = "gcomm://",
+    .address   = "",
     .options   = "",
     .name      = "unnamed",
     .data_dir  = ".",
