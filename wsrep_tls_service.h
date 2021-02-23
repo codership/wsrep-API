@@ -189,6 +189,7 @@ typedef const void* (*wsrep_tls_stream_get_error_category_t)(
  */
 typedef const char* (*wsrep_tls_error_message_get_t)(
     wsrep_tls_context_t*,
+    const wsrep_tls_stream_t* stream,
     int error_number, const void* category);
 
 /**
