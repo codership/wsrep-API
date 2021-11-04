@@ -595,6 +595,26 @@ typedef int (*wsrep_encrypt_cb_t)
     bool                  last
 );
 
+typedef enum
+{
+    WSREP_WHITELIST_IP = 0, // IP whitelist check
+    WSREP_WHITELIST_SSL     // SSL certificate whitelist check
+}
+wsrep_whitelist_key_t;
+
+/*
+ * Whitelist check callback. 
+ *
+ *
+ * @retval WSREP_OK          connection allowed
+ * @retval WSREP_NOT_ALLOWED connction not allowed
+ */
+typedef wsrep_status_t (*wsrep_whitelist_cb_t)
+( 
+  void*                 app_ctx,
+  wsrep_whitelist_key_t key, 
+  const wsrep_buf_t*    value
+);
 
 /*!
  * Initialization parameters for wsrep provider.
@@ -629,6 +649,7 @@ struct wsrep_init_args
     /* State Snapshot Transfer callbacks */
     wsrep_sst_donate_cb_t  sst_donate_cb;   //!< donate SST
     wsrep_synced_cb_t      synced_cb;       //!< synced with group
+    wsrep_whitelist_cb_t   whitelist_cb;    //!< Whitelist callback
 };
 
 
