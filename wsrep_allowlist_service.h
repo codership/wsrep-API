@@ -36,7 +36,7 @@
  */
 
 #ifndef WSREP_ALLOWLIST_SERVICE_H
-#define WSREP_ALLOWLSIT_SERVICE_H
+#define WSREP_ALLOWLIST_SERVICE_H
 
 #include "wsrep_api.h"
 
