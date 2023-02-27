@@ -165,7 +165,14 @@ int wsrep_load(const char *spec, wsrep_t **hptr, wsrep_log_cb_t log_cb)
         return ret;
     }
 
-    if (!(dlh = dlopen(spec, RTLD_NOW | RTLD_LOCAL))) {
+    int open_flags = RTLD_NOW | RTLD_LOCAL;
+#ifdef __SANITIZE_ADDRESS__
+    /* Keep the shared object to allow ASAN resolve symbols and report
+     * memleaks. This also suppresses some false positives. */
+    open_flags |= RTLD_NODELETE;
+#endif /* __SANITIZE_ADDRESS__ */
+
+    if (!(dlh = dlopen(spec, open_flags))) {
         snprintf(msg, msg_len, "wsrep_load(): dlopen(): %s", dlerror());
         logger (WSREP_LOG_ERROR, msg);
         ret = EINVAL;
