@@ -158,7 +158,7 @@ typedef _Bool    wsrep_bool_t;    //!< should be the same as standard (C99) bool
 #endif /* __cplusplus */
 
 /*! undefined seqno */
-#define WSREP_SEQNO_UNDEFINED (-1)
+static wsrep_seqno_t const WSREP_SEQNO_UNDEFINED = -1;
 
 
 /*! wsrep provider status codes */
