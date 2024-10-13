@@ -79,6 +79,17 @@ typedef void (*wsrep_connection_monitor_disconnect_cb_t)(
     wsrep_connection_monitor_context_t*,
     wsrep_connection_key_t id);
 
+/*
+ * Connection SSL/TLS info callback.
+ */
+typedef void (*wsrep_connection_monitor_ssl_info_cb_t)(
+    wsrep_connection_monitor_context_t*,
+    wsrep_connection_key_t id,
+    const wsrep_buf_t* chipher,
+    const wsrep_buf_t* certificate_subject,
+    const wsrep_buf_t* certificate_issuer,
+    const wsrep_buf_t* version);
+
 /**
  * Connection monitor service struct.
  *
@@ -94,6 +105,8 @@ typedef struct wsrep_connection_monitor_service_v1_st
     wsrep_connection_monitor_connect_cb_t connection_monitor_connect_cb;
     /* Connection monitor disconnect callback */
     wsrep_connection_monitor_disconnect_cb_t connection_monitor_disconnect_cb;
+    /* Connection monitor ssl info callback */
+    wsrep_connection_monitor_ssl_info_cb_t connection_monitor_ssl_info_cb;
     /* Pointer to application defined connection monitor context. */
     wsrep_connection_monitor_context_t* context;
 } wsrep_connection_monitor_service_v1_t;
