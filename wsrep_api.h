@@ -1,4 +1,4 @@
-/* Copyright (C) 2009-2013 Codership Oy <info@codership.com>
+/* Copyright (C) 2009-2024 Codership Oy <info@codership.com>
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -1372,6 +1372,68 @@ int wsrep_load(const char* spec, wsrep_t** hptr, wsrep_log_cb_t log_cb);
  * @param hptr wsrep handler pointer
  */
 void wsrep_unload(wsrep_t* hptr);
+
+/*!
+ * A callback struct to pass on calls which may be required to
+ * maintain sequential consistency enforced by the caller. The
+ * provider will call the callback once the sequential consistency
+ * is guaranteed.
+ */
+typedef struct wsrep_seq_cb {
+  /*! Pointer to caller defined context. */
+  void *ctx;
+  /*! Function which will be called by the provider once the sequential
+   * consistency is guaranteed.
+   *
+   * @param ctx Caller defined context.
+   */
+  void (*fn)(void *ctx);
+} wsrep_seq_cb_t;
+
+/*!
+ * @brief Certifies transaction with provider.
+ *
+ * Must be called before transaction commit. Returns success code, which
+ * caller must check.
+ *
+ * In case of WSREP_OK, transaction can proceed to commit.
+ * Otherwise transaction must rollback.
+ *
+ * In case of a failure there are two conceptually different situations:
+ * - the writeset was not ordered. In that case meta struct shall contain
+ *   undefined GTID: WSREP_UUID_UNDEFINED:WSREP_SEQNO_UNDEFINED.
+ * - the writeset was successfully ordered, but failed certification.
+ *   In this case meta struct shall contain a valid GTID.
+ *
+ * Regardless of the return code, if meta struct contains a valid GTID
+ * the commit order critical section must be entered with that GTID.
+ *
+ * This is an extension to the original certify() call with additional seq_cb
+ * parameter. The purpose of the seq_cb is to provide a callback to be
+ * called by the provider after the sequential consistency for the write set
+ * is guaranteed.
+ *
+ * @param wsrep      provider handle
+ * @param conn_id    connection ID
+ * @param ws_handle  writeset of committing transaction
+ * @param flags      fine tuning the replication WSREP_FLAG_*
+ * @param meta       transaction meta data
+ * @param seq_cb     callback for provider to call after ensuring sequential
+                     consistency
+ *
+ * @retval WSREP_OK         writeset successfully certified, can commit
+ * @retval WSREP_TRX_FAIL   must rollback transaction
+ * @retval WSREP_CONN_FAIL  must close client connection
+ * @retval WSREP_NODE_FAIL  must close all connections and reinit
+ */
+
+typedef wsrep_status_t (*wsrep_certify_fn_v1)(wsrep_t* wsrep,
+                                              wsrep_conn_id_t conn_id,
+                                              wsrep_ws_handle_t* ws_handle,
+                                              uint32_t flags,
+                                              wsrep_trx_meta_t* meta,
+                                              const wsrep_seq_cb_t* seq_cb);
+#define WSREP_CERTIFY_V1 "wsrep_certify_v1"
 
 #ifdef __cplusplus
 }
