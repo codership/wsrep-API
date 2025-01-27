@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2024-2925 Codership Oy <info@codership.com>
+ * Copyright (C) 2024-2025 Codership Oy <info@codership.com>
  *
  * This file is part of wsrep-API.
  *
