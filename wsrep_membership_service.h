@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2020 Codership Oy <info@codership.com>
+ * Copyright (C) 2020-2025 Codership Oy <info@codership.com>
  *
  * This file is part of wsrep-API.
  *
@@ -89,6 +89,54 @@ struct wsrep_membership
 };
 
 /**
+ * Member info structure extended to contain member state and flags
+ */
+struct wsrep_member_info_ext_v2
+{
+    struct wsrep_member_info base;
+    wsrep_seqno_t            last_committed;
+    enum wsrep_member_status status;
+    uint8_t                  flags;
+};
+
+/* Member flags */
+#define WSREP_MEMBER_FLAGS_REP       0x01 // group representative
+#define WSREP_MEMBER_FLAGS_CLA       0x02 // count last applied (for JOINED node)
+#define WSREP_MEMBER_FLAGS_BOOTSTRAP 0x04 // part of prim bootstrap process
+#define WSREP_MEMBER_FLAGS_STATELESS 0x08 // arbitrator or otherwise stateless node
+
+/**
+ * Extended membership structure v2
+ */
+struct wsrep_membership_v2
+{
+    /**
+     * Epoch of the membership data (last time it was updated)
+     */
+    wsrep_uuid_t group_uuid;
+    /**
+     * Sequence number of the last received (not processed) action
+     */
+    wsrep_seqno_t last_received;
+    /**
+     * When the members' data was last updated
+     */
+    wsrep_seqno_t updated;
+    /**
+     * Current group state
+     */
+    enum wsrep_view_status state;
+    /**
+     * Number of members in the array
+     */
+    size_t num;
+    /**
+     * Membership array
+     */
+    struct wsrep_member_info_ext_v2 members[1];
+};
+
+/**
  * Memory allocation callback for wsrep_get_mmebership_fn() below
  *
  * @param size of buffer to allocate
@@ -112,12 +160,36 @@ typedef wsrep_status_t (*wsrep_get_membership_fn) (
     struct wsrep_membership** membership);
 
 /**
+ * Query membership v2
+ *
+ * @param wsrep      provider handle
+ * @param allocator  to use for wsrep_membership struct allocation
+ * @param membership pointer to pointer to the memebrship structure.
+ *                   The structure is allocated by provider and must be freed
+ *                   by the caller.
+ * @return error code of the call
+ */
+typedef wsrep_status_t (*wsrep_get_membership_v2_fn) (
+    wsrep_t* wsrep,
+    wsrep_allocator_cb allocator,
+    struct wsrep_membership_v2** membership);
+
+/**
  * Membership service struct.
  * Returned by WSREP_MEMBERSHIP_SERVICE_INIT_FUNC_V1
  */
 struct wsrep_membership_service_v1
 {
     wsrep_get_membership_fn get_membership;
+};
+
+/**
+ * Membership service struct.
+ * Returned by WSREP_MEMBERSHIP_SERVICE_INIT_FUNC_V2
+ */
+struct wsrep_membership_service_v2
+{
+    wsrep_get_membership_v2_fn get_membership;
 };
 
 #ifdef __cplusplus
@@ -131,8 +203,17 @@ typedef
 void
 (*wsrep_membership_service_v1_deinit_fn)(void);
 
+typedef
+wsrep_status_t
+(*wsrep_membership_service_v2_init_fn) (struct wsrep_membership_service_v2*);
+typedef
+void
+(*wsrep_membership_service_v2_deinit_fn)(void);
+
 /** must be exported by the provider */
 #define WSREP_MEMBERSHIP_SERVICE_V1_INIT_FN   "wsrep_init_membership_service_v1"
 #define WSREP_MEMBERSHIP_SERVICE_V1_DEINIT_FN "wsrep_deinit_membership_service_v1"
+#define WSREP_MEMBERSHIP_SERVICE_V2_INIT_FN   "wsrep_init_membership_service_v2"
+#define WSREP_MEMBERSHIP_SERVICE_V2_DEINIT_FN "wsrep_deinit_membership_service_v2"
 
 #endif /* WSREP_MEMBERSHIP_SERVICE_H */
