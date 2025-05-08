@@ -21,7 +21,7 @@
  *
  * This file defines interface to retrieve a complete list of configuration
  * parameters accepted by the provider.
- * *
+ *
  * The provider which is capable of using the service interface v1 must
  * export the following functions:
  *
@@ -30,6 +30,13 @@
  *
  * which can be probed by the application.
  *
+ * Version 2 of the service interface is the same as version 1, except
+ * that it allows to retrieve a complete list of configuration parameters
+ * before the provider is initialized. In that case the provider export
+ * the following functions:
+ *
+ * int wsrep_init_config_service_v2(wsrep_config_service_v1_t*)
+ * void wsrep_deinit_config_service_v2()
  */
 
 #ifndef WSREP_CONFIG_SERVICE_H
@@ -85,6 +92,9 @@ typedef wsrep_status_t (*wsrep_get_parameters_cb) (const wsrep_parameter_t* p,
 
 /**
  * Get configuration parameters exposed by the provider.
+ * If the provider supports version 2 of this service,
+ * then the the function can be called before the provider
+ * is initialized using init() function from wsrep api.
  *
  * @param wsrep    pointer to provider handle
  * @param cb       function pointer for callback
@@ -106,11 +116,25 @@ typedef struct wsrep_config_service_v1_st {
   wsrep_get_parameters_fn get_parameters;
 } wsrep_config_service_v1_t;
 
+/**
+ * Config service struct - version 2
+ *
+ * A pointer to this struct must be passed to the call to
+ * wsrep_init_config_service_v2.
+ *
+ */
+typedef struct wsrep_config_service_v2_st {
+  wsrep_get_parameters_fn get_parameters;
+} wsrep_config_service_v2_t;
+
 #ifdef __cplusplus
 }
 #endif
 
 #define WSREP_CONFIG_SERVICE_INIT_FUNC_V1 "wsrep_init_config_service_v1"
 #define WSREP_CONFIG_SERVICE_DEINIT_FUNC_V1 "wsrep_deinit_config_service_v1"
+
+#define WSREP_CONFIG_SERVICE_INIT_FUNC_V2 "wsrep_init_config_service_v2"
+#define WSREP_CONFIG_SERVICE_DEINIT_FUNC_V2 "wsrep_deinit_config_service_v2"
 
 #endif /* WSREP_CONFIG_SERVICE */
